@@ -1,0 +1,24 @@
+# Copy to ~/.dbt/profiles.yml and set your GCP project id.
+# Auth is ADC (gcloud auth application-default login).
+# Marts route to nba_marts / nba_marts_dev via the generate_schema_name macro.
+sports_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: your-gcp-project-id
+      dataset: nba_staging_dev
+      location: US
+      threads: 4
+      job_execution_timeout_seconds: 300
+      priority: interactive
+    prod:
+      type: bigquery
+      method: oauth
+      project: your-gcp-project-id
+      dataset: nba_staging
+      location: US
+      threads: 4
+      job_execution_timeout_seconds: 300
+      priority: interactive

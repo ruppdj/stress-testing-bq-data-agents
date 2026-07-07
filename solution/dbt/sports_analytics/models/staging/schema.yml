@@ -1,0 +1,564 @@
+version: 2
+
+seeds:
+  - name: team_crosswalk
+    description: >
+      85-row mapping of every team identifier appearing in any source (era abbreviations,
+      alternate NBA-API vocabularies like GOS/PHL/SAN/UTH, full team names) to one
+      canonical 3-letter Basketball-Reference abbreviation. Every staging model joins it
+      unconditionally. TEAM IDENTITY MODEL: the mapping is season-independent and encodes
+      the NBA's OFFICIAL franchise records lineage, not physical organizational continuity.
+      This is safe because no identifier in the 1984–2026 window ever refers to two
+      different franchises under that lineage. The single records-vs-physical divergence
+      is Charlotte/New Orleans: CHH (1989–2002 Hornets) maps to CHO per the NBA's 2014
+      records transfer, while the physical organization that moved to New Orleans in 2002
+      continues as NOP — physical-continuity questions across that boundary are out of
+      model. Documented for agents in the mart_team_crosswalk description.
+
+  - name: player_name_crosswalk
+    description: >
+      36-row mapping of trade_impact player-name spellings to the player tables'
+      canonical Basketball-Reference spelling, so trade↔player joins work on exact
+      string equality. The trade source ASCII-folds diacritics (Luka Doncic vs
+      Luka Dončić), formats initials with periods (R.J. vs RJ Barrett), drops or adds
+      generational suffixes (Dennis Smith vs Dennis Smith Jr.), and uses formal names
+      where Basketball-Reference uses nicknames (Mohamed/Mo Bamba, Sviatoslav/Svi
+      Mykhailiuk). Includes one name change (Enes Kanter → Enes Freedom) and one
+      family trap resolved by trade context (Kenyon Martin Jr. → KJ Martin, the son —
+      NOT Kenyon Martin, the father). Generated 2026-07-07 by normalized anti-join
+      against the staging player tables, then hand-verified row by row; trade names
+      with no NBA player-table counterpart (draft-and-stash players) are intentionally
+      absent and pass through stg_trade_impact unchanged.
+    columns:
+      - name: raw_value
+        description: Player name exactly as it appears in the raw trade_impact source.
+        tests:
+          - unique
+          - not_null
+      - name: canonical_name
+        description: >
+          Canonical Basketball-Reference spelling used by the player tables
+          (stg_player_pergame / stg_player_advanced and all downstream marts).
+        tests:
+          - not_null
+
+models:
+  - name: stg_player_advanced
+    description: >
+      Player advanced stats per season from Basketball-Reference. Coverage: 1984–2026.
+      Grain: one row per player per season per team stint — split-only, no aggregate
+      rows (players traded mid-season have one row per team and nothing else; verified
+      2026-06-26). Season totals for traded players are built in mart_player_season_totals.
+      Key metrics: vorp, bpm, ws, ws_per_48, per, ts_pct.
+      All team_abbrev values are canonical Basketball-Reference abbreviations
+      (e.g., BRK not NJN, OKC not SEA) via the team_crosswalk seed.
+    columns:
+      - name: player
+        description: Player full name (Basketball-Reference spelling).
+        tests:
+          - not_null
+      - name: season
+        description: NBA season in YYYY format (e.g., 2024 = 2023-24 season).
+        tests:
+          - not_null
+      - name: team_abbrev
+        description: >
+          Canonical 3-letter team abbreviation (e.g., BOS, LAL, BRK).
+          Historical abbreviations (NJN, SEA, etc.) are resolved to their canonical
+          form via team_crosswalk. No TRD/aggregate values at this layer — every row
+          is one real team stint.
+        tests:
+          - not_null
+      - name: team
+        description: >
+          Raw team code from the source (may be a historical abbreviation, e.g. KCK);
+          not normalized — use team_abbrev for the canonical value.
+      - name: pos
+        description: Position (PG, SG, SF, PF, C or hyphenated combos).
+      - name: age
+        description: Player age as of February 1st of the season.
+      - name: g
+        description: Games played.
+      - name: mp
+        description: Minutes played.
+      - name: per
+        description: >
+          Player Efficiency Rating — per-minute production rate scaled to league
+          average of 15.
+      - name: ts_pct
+        description: True Shooting % — shooting efficiency accounting for 2P, 3P, and FT.
+      - name: three_par
+        description: Three-point attempt rate — share of FGA that are 3-pointers.
+      - name: ftr
+        description: Free throw rate — FTA per FGA.
+      - name: orb_pct
+        description: Offensive rebound % — share of available offensive rebounds grabbed while on court.
+      - name: drb_pct
+        description: Defensive rebound % — share of available defensive rebounds grabbed while on court.
+      - name: trb_pct
+        description: Total rebound % — share of available rebounds grabbed while on court.
+      - name: ast_pct
+        description: Assist % — share of teammate field goals assisted while on court.
+      - name: stl_pct
+        description: Steal % — share of opponent possessions ending in a steal while on court.
+      - name: blk_pct
+        description: Block % — share of opponent 2-point attempts blocked while on court.
+      - name: tov_pct
+        description: Turnover % — turnovers per 100 plays.
+      - name: usg_pct
+        description: Usage % — share of team plays used while on court (FGA + FTA + TO).
+      - name: ows
+        description: Offensive Win Shares.
+      - name: dws
+        description: Defensive Win Shares.
+      - name: ws
+        description: >
+          Win Shares — estimate of wins contributed. Context: 5–8 is a solid starter,
+          10+ is an All-Star season, 15+ is an MVP-caliber season.
+        tests:
+          - not_null
+      - name: ws_per_48
+        description: Win Shares per 48 minutes — rate version of ws; league average ≈ 0.100.
+      - name: obpm
+        description: Offensive Box Plus/Minus — offensive contribution vs. league average per 100 possessions.
+      - name: dbpm
+        description: Defensive Box Plus/Minus — defensive contribution vs. league average per 100 possessions.
+      - name: bpm
+        description: >
+          Box Plus/Minus — estimated per-100-possession contribution vs. league average.
+          Context: 0 is average, 5+ is All-Star level, 8+ is MVP-caliber.
+          Null for players who played fewer games than BPM's minimum possession threshold.
+      - name: vorp
+        description: >
+          Value Over Replacement Player — BPM-based total value above a replacement-level
+          player, scaled to team wins. Context: 3+ is a clear starter, 6+ is All-Star.
+        tests:
+          - not_null
+      - name: awards
+        description: Awards received that season (e.g., MVP, DPOY, All-Star), pipe-delimited.
+
+  - name: stg_player_pergame
+    description: >
+      Player per-game box scores per season from Basketball-Reference. Coverage: 1984–2026.
+      Grain: one row per player per season per team stint — split-only, no aggregate
+      rows (same as stg_player_advanced). Key metrics: pts, trb,
+      ast, fg_pct, three_p_pct, ft_pct.
+      All team_abbrev values are canonical via team_crosswalk.
+    columns:
+      - name: player
+        description: Player full name (Basketball-Reference spelling).
+        tests:
+          - not_null
+      - name: season
+        description: NBA season in YYYY format (e.g., 2024 = 2023-24 season).
+        tests:
+          - not_null
+      - name: team_abbrev
+        description: >
+          Canonical 3-letter team abbreviation. No TRD/aggregate values at this
+          layer — every row is one real team stint.
+        tests:
+          - not_null
+      - name: team
+        description: >
+          Raw team code from the source (may be a historical abbreviation, e.g. KCK);
+          not normalized — use team_abbrev for the canonical value.
+      - name: pos
+        description: Position.
+      - name: age
+        description: Player age as of February 1st of the season.
+      - name: g
+        description: Games played.
+      - name: gs
+        description: Games started.
+      - name: mp
+        description: Minutes per game.
+      - name: fg
+        description: Field goals made per game.
+      - name: fga
+        description: Field goal attempts per game.
+      - name: fg_pct
+        description: Field goal percentage.
+      - name: three_p
+        description: 3-point field goals made per game.
+      - name: three_pa
+        description: 3-point field goal attempts per game.
+      - name: three_p_pct
+        description: 3-point field goal percentage.
+      - name: two_p
+        description: 2-point field goals made per game.
+      - name: two_pa
+        description: 2-point field goal attempts per game.
+      - name: two_p_pct
+        description: 2-point field goal percentage.
+      - name: efg_pct
+        description: Effective field goal % — adjusts fg_pct to give 3-pointers 50% more weight.
+      - name: ft
+        description: Free throws made per game.
+      - name: fta
+        description: Free throw attempts per game.
+      - name: ft_pct
+        description: Free throw percentage.
+      - name: orb
+        description: Offensive rebounds per game.
+      - name: drb
+        description: Defensive rebounds per game.
+      - name: trb
+        description: Total rebounds per game.
+        tests:
+          - not_null
+      - name: ast
+        description: Assists per game.
+      - name: stl
+        description: Steals per game.
+      - name: blk
+        description: Blocks per game.
+      - name: tov
+        description: Turnovers per game.
+      - name: pf
+        description: Personal fouls per game.
+      - name: pts
+        description: Points per game.
+        tests:
+          - not_null
+
+  - name: stg_team_advanced
+    description: >
+      Team advanced stats per season from Basketball-Reference. Coverage: 1984–2026.
+      Grain: one row per team per season. Key metrics: nrtg, ortg, drtg, pace, srs, mov.
+      Use this model for season-level team strength questions.
+      All team_abbrev values are canonical via team_crosswalk.
+    columns:
+      - name: team
+        description: Full team name (may vary across seasons due to franchise moves/renames).
+        tests:
+          - not_null
+      - name: team_abbrev
+        description: >
+          Canonical 3-letter team abbreviation. Historical abbreviations (e.g., NJN, SEA)
+          are resolved to their current canonical form (BRK, OKC) via team_crosswalk.
+        tests:
+          - not_null
+      - name: season
+        description: NBA season in YYYY format (e.g., 2024 = 2023-24 season).
+        tests:
+          - not_null
+      - name: age
+        description: Average player age weighted by minutes played.
+      - name: w
+        description: Regular season wins.
+      - name: l
+        description: Regular season losses.
+      - name: pw
+        description: Pythagorean wins — expected wins based on point differential.
+      - name: pl
+        description: Pythagorean losses.
+      - name: pace
+        description: Possessions per 48 minutes; higher = faster-paced team.
+      - name: ortg
+        description: Offensive Rating — points scored per 100 possessions.
+      - name: drtg
+        description: Defensive Rating — points allowed per 100 possessions (lower is better).
+      - name: nrtg
+        description: >
+          Net Rating — ortg minus drtg. Best single number for overall team quality.
+          Context: +10 is historically elite, 0 is average, -10 is bottom-tier.
+        tests:
+          - not_null
+      - name: sos
+        description: Strength of Schedule — based on opponent win rates.
+      - name: srs
+        description: Simple Rating System — point differential adjusted for strength of schedule.
+      - name: mov
+        description: Margin of Victory — average point differential per game.
+        tests:
+          - not_null
+      - name: efg_pct
+        description: Team offensive effective field goal %.
+      - name: tov_pct
+        description: Team offensive turnover % — turnovers per 100 plays.
+      - name: orb_pct
+        description: Team offensive rebound %.
+      - name: ft_per_fga
+        description: Team free throw rate — FTA per FGA (offensive).
+      - name: ts_pct
+        description: Team offensive true shooting %.
+      - name: three_par
+        description: Team 3-point attempt rate.
+      - name: ftr
+        description: Team free throw rate.
+      - name: opp_efg_pct
+        description: Opponent effective field goal % (defensive four factor).
+      - name: opp_tov_pct
+        description: Opponent turnover % — turnovers forced per 100 opponent plays.
+      - name: drb_pct
+        description: Team defensive rebound % (defensive four factor).
+      - name: opp_ft_per_fga
+        description: Opponent free throw rate (defensive four factor).
+      - name: arena
+        description: Home arena name.
+      - name: attend
+        description: Total home attendance for the season.
+      - name: attend_per_g
+        description: Average home attendance per game.
+
+  - name: stg_team_game_logs
+    description: >
+      Game-by-game team box scores from NBA API. Coverage: 1995-96 through 2025-26
+      (season = 1996–2026 in YYYY format).
+      NOTE: Game logs are not available prior to the 1995-96 season. Queries with
+      season = 1995 or earlier return no results.
+      2 rows with null wl (postponed APR 16 2013 BOS/IND game) are excluded in staging.
+      Grain: one row per team per game. Each game appears twice — once for each team —
+      so do NOT sum both sides to get a game total without filtering to one team first.
+      team_abbrev is extracted from the matchup column and resolved via team_crosswalk.
+      All team_abbrev values are canonical via team_crosswalk.
+    columns:
+      - name: team_id
+        description: NBA API numeric team identifier.
+        tests:
+          - not_null
+      - name: game_id
+        description: NBA API unique game identifier. Shared by both team rows for the same game.
+        tests:
+          - not_null
+      - name: game_date
+        description: Date of the game (cast to DATE).
+        tests:
+          - not_null
+      - name: season
+        description: NBA season in YYYY format.
+        tests:
+          - not_null
+      - name: team_abbrev
+        description: >
+          Canonical 3-letter team abbreviation for this row's team, extracted from
+          the first 3 characters of matchup and resolved via team_crosswalk.
+        tests:
+          - not_null
+      - name: opponent_team_abbrev
+        description: >
+          Canonical 3-letter team abbreviation for the opponent, extracted from
+          the last 3 characters of matchup and resolved via team_crosswalk.
+          Use this to join game log rows to opponent team-season stats.
+        tests:
+          - not_null
+      - name: matchup
+        description: >
+          Human-readable matchup string rebuilt from canonical abbreviations
+          (e.g., "BOS vs. BRK" for home games, "BOS @ BRK" for away games).
+          Both abbreviations are canonical — safe to use as display or filter values.
+      - name: is_home
+        description: True when this team played at home (matchup contains 'vs.'); false for away games.
+        tests:
+          - not_null
+      - name: wl
+        description: Outcome — 'W' for win, 'L' for loss.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['W', 'L']
+      - name: w
+        description: Running win total for this team as of this game.
+      - name: l
+        description: Running loss total for this team as of this game.
+      - name: w_pct
+        description: Running win percentage as of this game.
+      - name: min
+        description: Minutes played (always 240 for regulation; 265 for OT, etc.).
+      - name: fgm
+        description: Field goals made.
+      - name: fga
+        description: Field goal attempts.
+      - name: fg_pct
+        description: Field goal percentage.
+      - name: fg3m
+        description: 3-point field goals made.
+      - name: fg3a
+        description: 3-point field goal attempts.
+      - name: fg3_pct
+        description: 3-point field goal percentage.
+      - name: ftm
+        description: Free throws made.
+      - name: fta
+        description: Free throw attempts.
+      - name: ft_pct
+        description: Free throw percentage.
+      - name: oreb
+        description: Offensive rebounds.
+      - name: dreb
+        description: Defensive rebounds.
+      - name: reb
+        description: Total rebounds.
+      - name: ast
+        description: Assists.
+      - name: stl
+        description: Steals.
+      - name: blk
+        description: Blocks.
+      - name: tov
+        description: Turnovers.
+      - name: pf
+        description: Personal fouls.
+      - name: pts
+        description: Points scored.
+        tests:
+          - not_null
+
+  - name: stg_playoff_series
+    description: >
+      NBA playoff series results from Basketball-Reference. Coverage: 1984–2025.
+      NOTE: Does not include the 2025-26 season. Grain: one row per playoff series.
+      Each row is one series (e.g., first round, conference semis), identified by
+      season + round + team_a + team_b. Use this to answer questions about which
+      teams won/lost a series, how many games a series went, or a team's playoff run.
+      All team columns (team_a, team_b, series_winner) are canonical abbreviations
+      resolved from full team names via team_crosswalk.
+    columns:
+      - name: season
+        description: NBA season in YYYY format (e.g., 2024 = 2023-24 playoffs).
+        tests:
+          - not_null
+      - name: round
+        description: >
+          Playoff round label (e.g., "First Round", "Conference Semifinals",
+          "Conference Finals", "Finals").
+        tests:
+          - not_null
+      - name: team_a
+        description: >
+          Canonical abbreviation of one team in the series (resolved from full name
+          via team_crosswalk). Order is not home/away, just consistent within season.
+        tests:
+          - not_null
+      - name: team_b
+        description: Canonical abbreviation of the other team in the series.
+        tests:
+          - not_null
+      - name: team_a_wins
+        description: Games won by team_a.
+      - name: team_b_wins
+        description: Games won by team_b.
+      - name: series_winner
+        description: Canonical abbreviation of the team that won the series.
+        tests:
+          - not_null
+      - name: series_length
+        description: Total number of games played in the series (4–7).
+
+  - name: stg_trade_impact
+    description: >
+      In-season NBA trades enriched with player and team context. Coverage: 1997–2025.
+      NOTE: Does not include trades from the 2025-26 season or before 1996-97.
+      Grain: one row per player-trade event. All team context columns (nrtg, playoff
+      outcomes, pre/post record) refer to the ACQUIRING team, not the trading team.
+      Use this model to answer questions about trade patterns, team improvement after
+      acquiring a player, or player movement.
+      acquiring_team and trading_team are canonical abbreviations resolved from full
+      team names via team_crosswalk. player_name is resolved to the player tables'
+      canonical Basketball-Reference spelling via player_name_crosswalk.
+    columns:
+      - name: player_name
+        description: >
+          Player full name, resolved to the canonical Basketball-Reference spelling
+          via player_name_crosswalk so it joins the player tables on exact equality
+          (raw source ASCII-folds diacritics, e.g. Luka Doncic → Luka Dončić).
+          Names with no player-table counterpart (draft-and-stash players who never
+          appeared in an NBA game) keep their raw spelling.
+        tests:
+          - not_null
+      - name: season
+        description: NBA season in YYYY format in which the trade occurred.
+        tests:
+          - not_null
+      - name: trade_date
+        description: Date the trade was announced (cast to DATE).
+        tests:
+          - not_null
+      - name: acquiring_team
+        description: >
+          Canonical abbreviation of the team that received the player in the trade
+          (resolved from full name via team_crosswalk).
+        tests:
+          - not_null
+      - name: trading_team
+        description: >
+          Canonical abbreviation of the team that sent the player in the trade
+          (resolved from full name via team_crosswalk).
+        tests:
+          - not_null
+      - name: conference
+        description: Conference of the acquiring team at time of trade (East/West).
+      - name: player_age
+        description: Player age at time of trade.
+      - name: player_position
+        description: Player position at time of trade.
+      - name: player_tier
+        description: Subjective tier of the player at time of trade (e.g., star, starter, rotation).
+      - name: player_allstar
+        description: Boolean — whether the player was an All-Star in the prior season.
+      - name: player_games_trade_yr
+        description: Games played in the trade season (across all teams).
+      - name: player_vorp_prior
+        description: Player VORP in the season prior to the trade.
+      - name: player_bpm_prior
+        description: Player BPM in the season prior to the trade.
+      - name: player_ws48_prior
+        description: Player WS/48 in the season prior to the trade.
+      - name: player_per_prior
+        description: Player PER in the season prior to the trade.
+      - name: player_usg_prior
+        description: Player Usage % in the season prior to the trade.
+      - name: player_ws_prior
+        description: Player total Win Shares in the season prior to the trade.
+      - name: player_games_prior
+        description: Games played in the season prior to the trade.
+      - name: win_pct_at_trade
+        description: Acquiring team win percentage at the moment of the trade.
+      - name: conf_rank_yr0
+        description: Acquiring team conference standing in the trade season.
+      - name: pre_games
+        description: Number of games the acquiring team played before the trade that season.
+      - name: pre_wins
+        description: Acquiring team wins before the trade.
+      - name: pre_win_pct
+        description: Acquiring team win % before the trade.
+      - name: post_games
+        description: Number of games the acquiring team played after the trade that season.
+      - name: post_wins
+        description: Acquiring team wins after the trade.
+      - name: post_win_pct
+        description: Acquiring team win % after the trade.
+      - name: contender_500
+        description: Boolean — acquiring team was at or above .500 at time of trade.
+      - name: contender_top6
+        description: Boolean — acquiring team was a top-6 conference seed at time of trade.
+      - name: contender_top4
+        description: Boolean — acquiring team was a top-4 conference seed at time of trade.
+      - name: contender_top2
+        description: Boolean — acquiring team was a top-2 conference seed at time of trade.
+      - name: nrtg_yr_minus1
+        description: Acquiring team net rating in the season before the trade.
+      - name: nrtg_yr0
+        description: Acquiring team net rating in the trade season.
+      - name: nrtg_yr1
+        description: Acquiring team net rating in the season after the trade.
+      - name: playoff_round_yr_minus1
+        description: Acquiring team's deepest playoff round reached the season before the trade (0 = missed playoffs).
+      - name: playoff_round_yr0
+        description: Acquiring team's deepest playoff round reached in the trade season.
+      - name: playoff_round_yr1
+        description: Acquiring team's deepest playoff round reached the season after the trade.
+      - name: playoff_seed_yr0
+        description: Acquiring team's conference playoff seed in the trade season (null if missed playoffs).
+      - name: made_playoffs_yr0
+        description: Boolean — acquiring team made the playoffs in the trade season.
+      - name: won_championship_yr0
+        description: Boolean — acquiring team won the championship in the trade season.
+      - name: won_championship_yr1
+        description: Boolean — acquiring team won the championship the season after the trade.
+      - name: seed_adj_round_yr0
+        description: Adjusted playoff round in the trade season, accounting for seeding (for fair cross-era comparisons).
+      - name: transaction_text
+        description: Raw transaction description text from Basketball-Reference.

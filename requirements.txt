@@ -1,0 +1,19 @@
+# Python dependencies for sports_data_agent (versions pinned to the working
+# conda `base` env as of 2026-07-02 — see README for env notes)
+
+# Data loading (scripts/load_to_bq.py)
+pandas==2.2.3
+pyarrow==15.0.2
+google-cloud-bigquery==3.42.1
+
+# dbt
+dbt-core==1.11.11
+dbt-bigquery==1.11.3
+
+# Agent scripts (scripts/upload_nba_agent.py, run_evaluation.py, test_chat.py)
+google-cloud-geminidataanalytics==0.13.1
+google-auth==2.52.0
+requests==2.31.0
+
+# Verified-query extraction (scripts/extract_queries.py)
+PyYAML==6.0.3

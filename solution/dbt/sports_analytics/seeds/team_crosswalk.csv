@@ -1,0 +1,86 @@
+raw_value,canonical_abbrev
+ATL,ATL
+BOS,BOS
+BRK,BRK
+CHO,CHO
+CHI,CHI
+CLE,CLE
+DAL,DAL
+DEN,DEN
+DET,DET
+GSW,GSW
+HOU,HOU
+IND,IND
+LAC,LAC
+LAL,LAL
+MEM,MEM
+MIA,MIA
+MIL,MIL
+MIN,MIN
+NOP,NOP
+NYK,NYK
+OKC,OKC
+ORL,ORL
+PHI,PHI
+PHO,PHO
+POR,POR
+SAC,SAC
+SAS,SAS
+TOR,TOR
+UTA,UTA
+WAS,WAS
+NJN,BRK
+BKN,BRK
+SEA,OKC
+NOH,NOP
+NOK,NOP
+CHH,CHO
+CHA,CHO
+VAN,MEM
+WSB,WAS
+KCK,SAC
+SDC,LAC
+GOS,GSW
+SAN,SAS
+PHL,PHI
+PHX,PHO
+UTH,UTA
+Atlanta Hawks,ATL
+Boston Celtics,BOS
+Brooklyn Nets,BRK
+New Jersey Nets,BRK
+Charlotte Hornets,CHO
+Charlotte Bobcats,CHO
+Chicago Bulls,CHI
+Cleveland Cavaliers,CLE
+Dallas Mavericks,DAL
+Denver Nuggets,DEN
+Detroit Pistons,DET
+Golden State Warriors,GSW
+Houston Rockets,HOU
+Indiana Pacers,IND
+Los Angeles Clippers,LAC
+Los Angeles Lakers,LAL
+Memphis Grizzlies,MEM
+Vancouver Grizzlies,MEM
+Miami Heat,MIA
+Milwaukee Bucks,MIL
+Minnesota Timberwolves,MIN
+New Orleans Pelicans,NOP
+New Orleans Hornets,NOP
+New Orleans/Oklahoma City Hornets,NOP
+New York Knicks,NYK
+Oklahoma City Thunder,OKC
+Seattle SuperSonics,OKC
+Orlando Magic,ORL
+Philadelphia 76ers,PHI
+Phoenix Suns,PHO
+Portland Trail Blazers,POR
+Sacramento Kings,SAC
+San Antonio Spurs,SAS
+Toronto Raptors,TOR
+Utah Jazz,UTA
+Washington Wizards,WAS
+Washington Bullets,WAS
+Kansas City Kings,SAC
+San Diego Clippers,LAC

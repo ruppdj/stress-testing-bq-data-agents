@@ -1,0 +1,700 @@
+version: 2
+
+# Seasons use YYYY format: season = 2016 means the 2015-16 NBA season.
+# All team abbreviations are canonical Basketball-Reference codes (e.g., BRK not NJN).
+
+models:
+
+  # ---------------------------------------------------------------------------
+  - name: mart_player_team_splits
+    description: >
+      Player stats broken out by each team a player appeared for in a season. Excludes TRD aggregate rows.
+      Use for team rosters, team-grouped player aggregates, or per-franchise stat breakdowns.
+      Coverage: 1984–2026. Season is encoded as YYYY.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player
+              - season
+              - team_abbrev
+              - age
+    columns: &player_columns
+      - name: player
+        description: Player full name using Basketball-Reference spelling.
+        tests:
+          - not_null
+      - name: season
+        description: "NBA season in YYYY format (e.g., 2024 = 2023-24 season). Dataset covers 1984–2026."
+        tests:
+          - not_null
+      - name: team_abbrev
+        description: >
+          Canonical 3-letter team abbreviation. No TRD rows in this table — each row represents
+          one specific team stint. Use mart_player_season_totals for traded-player season aggregates.
+        tests:
+          - not_null
+          - dbt_utils.not_accepted_values:
+              arguments:
+                values: ['TRD']
+      - name: age
+        description: >
+          Player age as of February 1st of the season. Part of the unique key: the source data
+          has no player IDs, so same-name players in the same season are distinct people
+          distinguished by age.
+        tests:
+          - not_null
+      - name: is_traded_player
+        description: >
+          True when the player appeared for more than one team that season — this row is a
+          partial-season team split, not the player's full season. Full-season aggregates for
+          traded players live in mart_player_season_totals. False for single-team seasons.
+      - name: mpg
+        description: Minutes per game (from per-game table; aliased from mp to distinguish from total minutes).
+      - name: mp
+        description: Total minutes played for the season (from advanced table).
+      - name: pts
+        description: Points per game.
+        tests:
+          - not_null
+      - name: trb
+        description: Total rebounds per game.
+      - name: ast
+        description: Assists per game.
+      - name: vorp
+        description: >
+          Value Over Replacement Player — BPM-based total value above a replacement-level player,
+          scaled to team wins. Context: 3+ is a clear starter, 6+ is All-Star level.
+      - name: bpm
+        description: >
+          Box Plus/Minus — estimated per-100-possession contribution vs. league average.
+          Context: 0 is average, 5+ is All-Star level, 8+ is MVP-caliber. Null for players
+          with very few games (below BPM threshold).
+      - name: ws
+        description: >
+          Win Shares — estimate of wins contributed. Context: 5–8 is a solid starter,
+          10+ is All-Star, 15+ is MVP-caliber.
+      - name: per
+        description: Player Efficiency Rating — per-minute production scaled to league average of 15.
+      - name: three_p_pct
+        description: 3-point field goal percentage.
+      - name: awards
+        description: Awards received that season (e.g., MVP, DPOY, All-Star), pipe-delimited.
+
+  # ---------------------------------------------------------------------------
+  - name: mart_player_season_totals
+    description: >
+      One row per player per season (unique key: player + season + age — the source data has no
+      player IDs, so a handful of same-name players in the same season appear as separate rows
+      distinguished by age). For traded players, this is the season-total row (team_abbrev = 'TRD').
+      Coverage: 1984–2026. Season is encoded as YYYY (season = 2013 means the 2012-13 season).
+      Safe for player rankings, career averages, award queries — no deduplication required.
+      Do NOT join rows where team_abbrev = 'TRD' to any team-level table — 'TRD' has no match in mart_team_season.
+
+      Use this model to answer: per-game stat lines for a specific player-season,
+      single-season rankings (top PPG, VORP, Win Shares), career averages across seasons,
+      award history (MVP, DPOY, All-Star), shooting efficiency (TS%, 3P%), and
+      player efficiency comparisons (PER, BPM).
+
+      Do NOT use this model for team-level questions (use mart_team_season), game-by-game
+      results (use mart_game_logs), or player data before 1984.
+    config:
+      meta:
+        verified_queries:
+
+          - question: "What did LeBron James average in points, rebounds, and assists per game in the 2012-13 season?"
+            sql: |
+              SELECT pts, trb, ast
+              FROM `nba-data-agent-testing.nba_marts.mart_player_season_totals`
+              WHERE player = 'LeBron James'
+                AND season = 2013
+
+          - question: "Who was the only player to average 35 or more points per game in a season since 1984?"
+            sql: |
+              SELECT player, season, team_abbrev, pts
+              FROM `nba-data-agent-testing.nba_marts.mart_player_season_totals`
+              WHERE pts >= 35
+              ORDER BY pts DESC
+
+          - question: "What was Stephen Curry's 3-point field goal percentage in the 2015-16 season?"
+            sql: |
+              SELECT three_p_pct
+              FROM `nba-data-agent-testing.nba_marts.mart_player_season_totals`
+              WHERE player = 'Stephen Curry'
+                AND season = 2016
+
+          - question: "Which player had the highest single-season VORP in the dataset since 1984?"
+            sql: |
+              SELECT player, season, team_abbrev, vorp
+              FROM `nba-data-agent-testing.nba_marts.mart_player_season_totals`
+              ORDER BY vorp DESC
+              LIMIT 5
+
+          - question: "How many seasons did Michael Jordan appear in the dataset, and what was his average points per game across those seasons?"
+            sql: |
+              SELECT
+                  COUNT(DISTINCT season)      AS seasons_in_dataset,
+                  ROUND(AVG(pts), 1)          AS career_avg_ppg
+              FROM `nba-data-agent-testing.nba_marts.mart_player_season_totals`
+              WHERE player = 'Michael Jordan'
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player
+              - season
+              - age
+    columns:
+      - name: player
+        description: Player full name using Basketball-Reference spelling.
+        tests:
+          - not_null
+      - name: season
+        description: "NBA season in YYYY format (e.g., 2024 = 2023-24 season). Dataset covers 1984–2026."
+        tests:
+          - not_null
+      - name: team_abbrev
+        description: >
+          Canonical 3-letter team abbreviation, or 'TRD' for the season-total row of a player
+          traded mid-season. Do NOT join TRD rows to mart_team_season.
+        tests:
+          - not_null
+      - name: team
+        description: >
+          Raw team code from the source data (may be a historical abbreviation, e.g. KCK).
+          Prefer team_abbrev, which is canonical. On TRD rows, every team the player appeared
+          for that season separated by " / ", ordered by games played with each team
+          (most first), e.g. "BRK / HOU".
+      - name: age
+        description: >
+          Player age as of February 1st of the season. Part of the unique key: the source data
+          has no player IDs, so same-name players in the same season are distinct people
+          distinguished by age.
+        tests:
+          - not_null
+      - name: g
+        description: Games played — summed across all team stints on TRD rows.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 85
+      - name: is_traded_player
+        description: >
+          True for the season-total row of a player traded mid-season (team_abbrev = 'TRD').
+          False for single-team players. Use is_traded_player = true to identify traded-player aggregates.
+      - name: mpg
+        description: Minutes per game (from per-game table; aliased from mp to distinguish from total minutes).
+      - name: mp
+        description: Total minutes played for the season (from advanced table).
+      - name: pts
+        description: Points per game.
+        tests:
+          - not_null
+      - name: trb
+        description: Total rebounds per game.
+      - name: ast
+        description: Assists per game.
+      - name: vorp
+        description: >
+          Value Over Replacement Player — BPM-based total value above a replacement-level player,
+          scaled to team wins. Context: 3+ is a clear starter, 6+ is All-Star level.
+      - name: bpm
+        description: >
+          Box Plus/Minus — estimated per-100-possession contribution vs. league average.
+          Context: 0 is average, 5+ is All-Star level, 8+ is MVP-caliber. Null for players
+          with very few games (below BPM threshold).
+      - name: ws
+        description: >
+          Win Shares — estimate of wins contributed. Context: 5–8 is a solid starter,
+          10+ is All-Star, 15+ is MVP-caliber.
+      - name: per
+        description: Player Efficiency Rating — per-minute production scaled to league average of 15.
+      - name: three_p_pct
+        description: 3-point field goal percentage.
+      - name: awards
+        description: Awards received that season (e.g., MVP, DPOY, All-Star), pipe-delimited.
+
+  # ---------------------------------------------------------------------------
+  - name: mart_unique_games
+    description: >
+      One row per physical game. Use for league-wide counts (total games played, league average score)
+      and clean, unbiased league-wide box score aggregates (assists, rebounds, shooting percentages)
+      without double-counting or home-court advantage bias.
+      Coverage: 1996–2026. Season is encoded as YYYY.
+    columns:
+      - name: game_id
+        description: Unique game identifier.
+        tests:
+          - unique
+          - not_null
+      - name: game_date
+        description: Date of the game.
+      - name: season
+        description: NBA season in YYYY format.
+      - name: home_team
+        description: Canonical abbreviation of the home team.
+      - name: home_pts
+        description: Points scored by the home team.
+      - name: away_team
+        description: Canonical abbreviation of the away team.
+      - name: away_pts
+        description: Points scored by the away team.
+      - name: home_win
+        description: True if the home team won, false otherwise.
+      - name: total_pts
+        description: Sum of home team and away team points.
+      - name: home_ast
+        description: Total assists recorded by the home team.
+      - name: away_ast
+        description: Total assists recorded by the away team.
+      - name: home_reb
+        description: Total rebounds recorded by the home team.
+      - name: away_reb
+        description: Total rebounds recorded by the away team.
+      - name: home_oreb
+        description: Offensive rebounds recorded by the home team.
+      - name: away_oreb
+        description: Offensive rebounds recorded by the away team.
+      - name: home_dreb
+        description: Defensive rebounds recorded by the home team.
+      - name: away_dreb
+        description: Defensive rebounds recorded by the away team.
+      - name: home_stl
+        description: Steals recorded by the home team.
+      - name: away_stl
+        description: Steals recorded by the away team.
+      - name: home_blk
+        description: Blocks recorded by the home team.
+      - name: away_blk
+        description: Blocks recorded by the away team.
+      - name: home_tov
+        description: Turnovers committed by the home team.
+      - name: away_tov
+        description: Turnovers committed by the away team.
+      - name: home_pf
+        description: Personal fouls committed by the home team.
+      - name: away_pf
+        description: Personal fouls committed by the away team.
+      - name: home_fgm
+        description: Field goals made by the home team.
+      - name: away_fgm
+        description: Field goals made by the away team.
+      - name: home_fga
+        description: Field goal attempts by the home team.
+      - name: away_fga
+        description: Field goal attempts by the away team.
+      - name: home_fg3m
+        description: 3-point field goals made by the home team.
+      - name: away_fg3m
+        description: 3-point field goals made by the away team.
+      - name: home_fg3a
+        description: 3-point field goal attempts by the home team.
+      - name: away_fg3a
+        description: 3-point field goal attempts by the away team.
+      - name: home_ftm
+        description: Free throws made by the home team.
+      - name: away_ftm
+        description: Free throws made by the away team.
+      - name: home_fta
+        description: Free throw attempts by the home team.
+      - name: away_fta
+        description: Free throw attempts by the away team.
+
+
+
+  # ---------------------------------------------------------------------------
+
+
+  - name: mart_team_season
+    description: >
+      One row per team per season. Coverage: 1984–2026.
+      Season is encoded as YYYY (season = 2016 means the 2015-16 season).
+      Key metrics: nrtg (best single number for team quality), ortg, drtg, pace, srs, mov, w, l.
+
+      Use this model to answer: team strength in a given season, head-to-head season
+      comparisons, league-wide trends over time (pace evolution, scoring increases),
+      best and worst teams by NRtg or SRS, home attendance figures.
+
+      Do NOT use this model for game-by-game results (use mart_game_logs) or
+      playoff outcomes (use mart_playoff_series).
+    config:
+      meta:
+        verified_queries:
+
+          - question: "Which team had the best Net Rating in the 2015-16 season?"
+            sql: |
+              SELECT team_abbrev, team, nrtg, w, l
+              FROM `nba-data-agent-testing.nba_marts.mart_team_season`
+              WHERE season = 2016
+              ORDER BY nrtg DESC
+              LIMIT 5
+
+          - question: "Which team had the highest SRS (Simple Rating System) in any single season in the dataset?"
+            sql: |
+              SELECT team_abbrev, team, season, srs, w, l
+              FROM `nba-data-agent-testing.nba_marts.mart_team_season`
+              ORDER BY srs DESC
+              LIMIT 5
+
+          - question: "How has league average pace changed from the 1994-95 season to the 2018-19 season?"
+            sql: |
+              SELECT season, ROUND(AVG(pace), 1) AS avg_pace
+              FROM `nba-data-agent-testing.nba_marts.mart_team_season`
+              WHERE season IN (1995, 2000, 2005, 2010, 2015, 2019)
+              GROUP BY season
+              ORDER BY season
+
+          - question: "What were the top 3 teams by offensive rating in the 2015-16 season?"
+            sql: |
+              SELECT team_abbrev, team, ortg, nrtg
+              FROM `nba-data-agent-testing.nba_marts.mart_team_season`
+              WHERE season = 2016
+              ORDER BY ortg DESC
+              LIMIT 3
+
+          - question: "What was the Net Rating of the Chicago Bulls in the 1995-96 season?"
+            sql: |
+              SELECT team_abbrev, team, nrtg, ortg, drtg, w, l, srs
+              FROM `nba-data-agent-testing.nba_marts.mart_team_season`
+              WHERE team_abbrev = 'CHI' AND season = 1996
+
+    columns:
+      - name: team_abbrev
+        description: >
+          Canonical 3-letter team abbreviation (e.g., GSW, CHI, MIA). Historical abbreviations
+          resolved to current canonical form following the NBA's official franchise records
+          lineage — see the mart_team_crosswalk description for the full team identity model
+          (including the Charlotte/New Orleans divergence).
+      - name: season
+        description: "NBA season in YYYY format (e.g., 2016 = 2015-16 season). Dataset covers 1984–2026."
+      - name: nrtg
+        description: >
+          Net Rating — offensive rating minus defensive rating. Best single number for overall team quality.
+          Context: +10 is historically elite, 0 is league average, -10 is bottom-tier.
+      - name: ortg
+        description: Offensive Rating — points scored per 100 possessions.
+      - name: drtg
+        description: Defensive Rating — points allowed per 100 possessions (lower is better).
+      - name: pace
+        description: Possessions per 48 minutes. Higher = faster-paced team.
+      - name: srs
+        description: Simple Rating System — point differential per game adjusted for strength of schedule.
+      - name: mov
+        description: Margin of Victory — average point differential per game.
+      - name: w
+        description: Regular season wins.
+      - name: l
+        description: Regular season losses.
+
+
+  # ---------------------------------------------------------------------------
+  - name: mart_game_logs
+    description: >
+      One row per team per game. Coverage: 1995-96 season through 2025-26
+      (season = 1996–2026 in YYYY format where YYYY is the ending year of the season).
+      IMPORTANT COVERAGE GAP: Game logs are NOT available before the 1995-96 season.
+      Questions about game-by-game results for the 1994-95 season (season = 1995) or
+      earlier CANNOT be answered from this model — do not invent an answer for out-of-range seasons.
+
+      Each game appears TWICE — once for each team. Do NOT sum both sides of the same game
+      without filtering to one team first. Use team_abbrev to filter to a single team's row.
+
+      Key columns: team_abbrev, opponent_team_abbrev, game_date, season, wl, is_home, pts.
+      Use this model to answer: regular-season win/loss totals, home vs. away records,
+      win streaks, points scored per game, head-to-head results (1997+ only).
+
+      Do NOT use this model for season-level team strength (use mart_team_season) or
+      playoff series results (use mart_playoff_series).
+    config:
+      meta:
+        verified_queries:
+
+          - question: "How many wins did the Golden State Warriors have in the 2015-16 regular season?"
+            sql: |
+              -- season = 2016 is the 2015-16 season (YYYY format)
+              SELECT COUNT(*) AS wins
+              FROM `nba-data-agent-testing.nba_marts.mart_game_logs`
+              WHERE team_abbrev = 'GSW'
+                AND season = 2016
+                AND wl = 'W'
+
+          - question: "What was the Chicago Bulls' win-loss record in the 1995-96 season?"
+            sql: |
+              -- The 1995-96 season IS in the data (season = 1996 in YYYY format).
+              -- Expected: 72 wins, 10 losses.
+              SELECT
+                  SUM(CASE WHEN wl = 'W' THEN 1 ELSE 0 END) AS wins,
+                  SUM(CASE WHEN wl = 'L' THEN 1 ELSE 0 END) AS losses
+              FROM `nba-data-agent-testing.nba_marts.mart_game_logs`
+              WHERE team_abbrev = 'CHI' AND season = 1996
+
+          - question: "What was the Chicago Bulls' win-loss record in the 1994-95 season?"
+            sql: |
+              -- Coverage check: game logs start at season = 1996 (1995-96 season).
+              -- The 1994-95 season is season = 1995, which is NOT in this table.
+              -- This query returns 0 rows; the agent must acknowledge the coverage gap.
+              SELECT COUNT(*) AS game_count
+              FROM `nba-data-agent-testing.nba_marts.mart_game_logs`
+              WHERE team_abbrev = 'CHI' AND season = 1995
+
+          - question: "How many road wins did the Miami Heat record in the 2012-13 regular season?"
+            sql: |
+              SELECT COUNT(*) AS road_wins
+              FROM `nba-data-agent-testing.nba_marts.mart_game_logs`
+              WHERE team_abbrev = 'MIA'
+                AND season = 2013
+                AND wl = 'W'
+                AND is_home = false
+
+          - question: "What was the Golden State Warriors' home record in the 2015-16 season?"
+            sql: |
+              SELECT
+                  SUM(CASE WHEN wl = 'W' THEN 1 ELSE 0 END) AS home_wins,
+                  SUM(CASE WHEN wl = 'L' THEN 1 ELSE 0 END) AS home_losses
+              FROM `nba-data-agent-testing.nba_marts.mart_game_logs`
+              WHERE team_abbrev = 'GSW'
+                AND season = 2016
+                AND is_home = true
+
+          - question: "Which team had the most wins in any single season in the game log data?"
+            sql: |
+              SELECT team_abbrev, season, COUNT(*) AS wins
+              FROM `nba-data-agent-testing.nba_marts.mart_game_logs`
+              WHERE wl = 'W'
+              GROUP BY team_abbrev, season
+              ORDER BY wins DESC
+              LIMIT 5
+
+    columns:
+      - name: team_abbrev
+        description: Canonical 3-letter abbreviation of the team for this row. Use this to filter to one team per game.
+      - name: opponent_team_abbrev
+        description: Canonical 3-letter abbreviation of the opposing team. Use for filtering or joining to opponent stats.
+      - name: season
+        description: "NBA season in YYYY format (season = 1996 = 1995-96 season). COVERAGE: 1996–2026 only. Querying season = 1995 or earlier returns 0 rows."
+      - name: game_date
+        description: Date of the game (DATE type).
+      - name: is_home
+        description: True when this team played at home (matchup contains 'vs.'); false for away games.
+      - name: wl
+        description: "Game outcome: 'W' for win, 'L' for loss."
+      - name: matchup
+        description: "Human-readable matchup string built from canonical abbreviations, e.g., 'GSW vs. CLE' (home) or 'GSW @ CLE' (away)."
+      - name: pts
+        description: Points scored by this team in the game.
+
+
+  # ---------------------------------------------------------------------------
+  - name: mart_playoff_series
+    description: >
+      One row per playoff series. Coverage: 1984–2025 (season = 1984 through 2025).
+      The 2025-26 playoffs are NOT included.
+      Each row is one series identified by season + round + team_a + team_b.
+      Round values: "First Round", "Conference Semifinals", "Conference Finals", "Finals".
+      Both team_a and team_b are canonical Basketball-Reference abbreviations.
+      series_winner is the canonical abbreviation of the winning team.
+
+      Use this model to answer: who won a specific series, how many games a series lasted,
+      which teams appeared in the Finals, a team's playoff history, championship winners.
+
+      Do NOT use this model for regular-season win totals (use mart_game_logs or mart_team_season)
+      or individual playoff game box scores (not in this dataset).
+    config:
+      meta:
+        verified_queries:
+
+          - question: "How many games did the 2016 NBA Finals last, and who won?"
+            sql: |
+              -- season = 2016 = 2015-16 playoffs
+              SELECT team_a, team_b, team_a_wins, team_b_wins, series_winner, series_length
+              FROM `nba-data-agent-testing.nba_marts.mart_playoff_series`
+              WHERE season = 2016 AND round = 'Finals'
+
+          - question: "How many consecutive NBA Finals appearances did the Golden State Warriors make starting in 2015?"
+            sql: |
+              SELECT season, series_winner,
+                     CASE WHEN team_a = 'GSW' THEN team_b ELSE team_a END AS opponent
+              FROM `nba-data-agent-testing.nba_marts.mart_playoff_series`
+              WHERE round = 'Finals'
+                AND (team_a = 'GSW' OR team_b = 'GSW')
+                AND season BETWEEN 2015 AND 2022
+              ORDER BY season
+
+          - question: "Which team did the Detroit Pistons defeat in the 2004 NBA Finals, and what was the series length?"
+            sql: |
+              SELECT team_a, team_b, team_a_wins, team_b_wins, series_winner, series_length
+              FROM `nba-data-agent-testing.nba_marts.mart_playoff_series`
+              WHERE season = 2004 AND round = 'Finals'
+
+          - question: "How many total playoff series are in the dataset?"
+            sql: |
+              SELECT COUNT(*) AS total_series
+              FROM `nba-data-agent-testing.nba_marts.mart_playoff_series`
+
+          - question: "Which teams reached the NBA Finals in the 2012-13 season?"
+            sql: |
+              SELECT team_a, team_b, series_winner, series_length
+              FROM `nba-data-agent-testing.nba_marts.mart_playoff_series`
+              WHERE season = 2013 AND round = 'Finals'
+
+    columns:
+      - name: season
+        description: "NBA season in YYYY format (e.g., 2016 = 2015-16 playoffs). Dataset covers 1984–2025."
+      - name: round
+        description: "Playoff round label. Values: 'First Round', 'Conference Semifinals', 'Conference Finals', 'Finals'."
+      - name: team_a
+        description: Canonical abbreviation of one team in the series. Order is not home/away — both team_a and team_b are participants.
+      - name: team_b
+        description: Canonical abbreviation of the other team in the series.
+      - name: team_a_wins
+        description: Number of games won by team_a.
+      - name: team_b_wins
+        description: Number of games won by team_b.
+      - name: series_winner
+        description: Canonical abbreviation of the team that won the series.
+      - name: series_length
+        description: Total games played in the series (4–7).
+
+
+  # ---------------------------------------------------------------------------
+  - name: mart_trade_impact
+    description: >
+      One row per player-trade event. Coverage: 1997–2025 (season = 1997 through 2025).
+      Trades before the 1996-97 season are NOT in this dataset.
+
+      IMPORTANT — team context columns (nrtg_yr_minus1, nrtg_yr0, nrtg_yr1, pre/post win%,
+      playoff_round_*, won_championship_*) all refer to the ACQUIRING team, not the trading team.
+      "Year 0" is the trade season; "yr_minus1" is the season before; "yr1" is the season after.
+
+      Use this model to answer: where a specific player was traded and when, how a team performed
+      before and after acquiring a player, which trades were made by contenders vs. rebuilding teams,
+      which trades preceded championships.
+
+      Do NOT use this model for trades before 1997, for full roster moves (this is player-level
+      not package-level), or for player stats in the trade season (use mart_player_season_totals).
+    config:
+      meta:
+        verified_queries:
+
+          - question: "Which team acquired James Harden in an in-season trade, and when?"
+            sql: |
+              SELECT player_name, acquiring_team, trading_team, trade_date, season
+              FROM `nba-data-agent-testing.nba_marts.mart_trade_impact`
+              WHERE player_name LIKE '%Harden%'
+              ORDER BY trade_date DESC
+              LIMIT 5
+
+          - question: "Which team did Pau Gasol join after his February 2008 trade, and which team traded him?"
+            sql: |
+              SELECT player_name, acquiring_team, trading_team, trade_date
+              FROM `nba-data-agent-testing.nba_marts.mart_trade_impact`
+              WHERE player_name LIKE '%Gasol%'
+                AND season = 2008
+
+          - question: "Which team showed the largest improvement in Net Rating from the season before a trade to the season after?"
+            sql: |
+              -- nrtg columns are for the ACQUIRING team; yr1 - yr_minus1 = two-year delta around the trade
+              SELECT player_name, acquiring_team, season,
+                     ROUND(nrtg_yr_minus1, 1) AS nrtg_before,
+                     ROUND(nrtg_yr1, 1)        AS nrtg_after,
+                     ROUND(nrtg_yr1 - nrtg_yr_minus1, 1) AS nrtg_delta
+              FROM `nba-data-agent-testing.nba_marts.mart_trade_impact`
+              WHERE nrtg_yr1 IS NOT NULL AND nrtg_yr_minus1 IS NOT NULL
+              ORDER BY nrtg_yr1 - nrtg_yr_minus1 DESC
+              LIMIT 10
+
+          - question: "How many trades are in the dataset where the acquiring team won the championship in the same season as the trade?"
+            sql: |
+              SELECT COUNT(*) AS championship_trades
+              FROM `nba-data-agent-testing.nba_marts.mart_trade_impact`
+              WHERE won_championship_yr0 = true
+
+          - question: "Which players traded in the dataset were acquired by teams that then won the championship that season?"
+            sql: |
+              SELECT player_name, acquiring_team, trading_team, trade_date, season
+              FROM `nba-data-agent-testing.nba_marts.mart_trade_impact`
+              WHERE won_championship_yr0 = true
+              ORDER BY trade_date
+
+    columns:
+      - name: player_name
+        description: >
+          Player full name in the canonical Basketball-Reference spelling used by the
+          player marts (diacritics included, e.g. Luka Dončić, Kristaps Porziņģis), so
+          it joins mart_player_season_totals.player and mart_player_team_splits.player
+          on exact equality. Draft-and-stash players who never appeared in an NBA game
+          keep their source spelling and have no player-mart rows.
+      - name: season
+        description: "NBA season in YYYY format in which the trade occurred. Coverage: 1997–2025."
+      - name: trade_date
+        description: Date the trade was announced (DATE type).
+      - name: acquiring_team
+        description: Canonical abbreviation of the team that received the player.
+      - name: trading_team
+        description: Canonical abbreviation of the team that sent the player.
+      - name: nrtg_yr_minus1
+        description: >
+          Acquiring team's net rating in the season BEFORE the trade. NULL when the
+          acquiring franchise has no prior season under the NBA's records lineage —
+          in practice the one 2003 trade to the first-season New Orleans Hornets
+          (see the mart_team_crosswalk team identity model).
+      - name: nrtg_yr0
+        description: Acquiring team's net rating in the TRADE SEASON.
+      - name: nrtg_yr1
+        description: Acquiring team's net rating in the season AFTER the trade.
+      - name: pre_win_pct
+        description: Acquiring team's win percentage in games played before the trade in the trade season.
+      - name: post_win_pct
+        description: Acquiring team's win percentage in games played after the trade in the trade season.
+      - name: playoff_round_yr_minus1
+        description: Acquiring team's deepest playoff round the season before the trade (0 = missed playoffs, 1 = first round, 4 = Finals).
+      - name: playoff_round_yr0
+        description: Acquiring team's deepest playoff round in the trade season.
+      - name: playoff_round_yr1
+        description: Acquiring team's deepest playoff round the season after the trade.
+      - name: won_championship_yr0
+        description: True if the acquiring team won the championship in the same season as the trade.
+      - name: won_championship_yr1
+        description: True if the acquiring team won the championship in the season after the trade.
+      - name: player_vorp_prior
+        description: Player's VORP in the season prior to the trade (measure of player quality).
+      - name: player_bpm_prior
+        description: Player's Box Plus/Minus in the season prior to the trade.
+
+
+  # ---------------------------------------------------------------------------
+  - name: mart_team_crosswalk
+    description: >
+      Lookup table mapping all non-canonical team names, historical abbreviations, and full
+      nicknames to their canonical 3-letter Basketball-Reference abbreviation. Use this table
+      when the user specifies a team by city name, nickname, or historical identity (e.g.,
+      "Seattle SuperSonics", "SEA", "New Jersey Nets") to resolve the correct abbreviation
+      before joining to any other mart table. Contains 55 rows — canonical identity rows
+      (where raw_value = canonical_abbrev) are excluded to keep this focused on non-obvious mappings.
+
+      TEAM IDENTITY MODEL: canonical abbreviations encode the NBA's OFFICIAL franchise
+      records lineage (the Basketball-Reference convention), not physical organizational
+      continuity. Relocated teams keep one canonical identity across the move (SEA→OKC,
+      VAN→MEM, NJN→BRK, KCK→SAC, SDC→LAC, WSB→WAS). The single case where records lineage
+      and physical continuity diverge is Charlotte/New Orleans: per the NBA's 2014 records
+      transfer, the 1989–2002 Charlotte Hornets (CHH) belong to the modern Charlotte
+      franchise (CHO, which also includes the 2005–2014 Bobcats era), while the New
+      Orleans lineage (NOP, including the NOH/NOK Hornets years) officially begins in
+      2002-03 — even though the physical organization that moved to New Orleans in 2002
+      was the original Charlotte roster. Questions about physical organizational
+      continuity across that 2002 boundary cannot be answered from team identifiers in
+      this dataset; if asked, state this caveat rather than silently answering under
+      the records lineage.
+    columns:
+      - name: raw_value
+        description: >
+          The raw input name or historical abbreviation (e.g., 'Seattle SuperSonics', 'SEA',
+          'New Jersey Nets', 'NJN'). Match user-provided team references against this column.
+      - name: canonical_abbrev
+        description: >
+          The canonical 3-letter abbreviation used across all other mart tables (e.g., 'OKC', 'BRK').
+          Use this value in joins to mart_player_team_splits, mart_player_season_totals,
+          mart_team_season, mart_game_logs, mart_playoff_series, and mart_trade_impact.

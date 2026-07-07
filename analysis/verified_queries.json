@@ -1,0 +1,132 @@
+[
+  {
+    "model": "mart_player_season_totals",
+    "question": "What did LeBron James average in points, rebounds, and assists per game in the 2012-13 season?",
+    "sql": "SELECT pts, trb, ast\nFROM `nba-data-agent-testing.nba_marts.mart_player_season_totals`\nWHERE player = 'LeBron James'\n  AND season = 2013"
+  },
+  {
+    "model": "mart_player_season_totals",
+    "question": "Who was the only player to average 35 or more points per game in a season since 1984?",
+    "sql": "SELECT player, season, team_abbrev, pts\nFROM `nba-data-agent-testing.nba_marts.mart_player_season_totals`\nWHERE pts >= 35\nORDER BY pts DESC"
+  },
+  {
+    "model": "mart_player_season_totals",
+    "question": "What was Stephen Curry's 3-point field goal percentage in the 2015-16 season?",
+    "sql": "SELECT three_p_pct\nFROM `nba-data-agent-testing.nba_marts.mart_player_season_totals`\nWHERE player = 'Stephen Curry'\n  AND season = 2016"
+  },
+  {
+    "model": "mart_player_season_totals",
+    "question": "Which player had the highest single-season VORP in the dataset since 1984?",
+    "sql": "SELECT player, season, team_abbrev, vorp\nFROM `nba-data-agent-testing.nba_marts.mart_player_season_totals`\nORDER BY vorp DESC\nLIMIT 5"
+  },
+  {
+    "model": "mart_player_season_totals",
+    "question": "How many seasons did Michael Jordan appear in the dataset, and what was his average points per game across those seasons?",
+    "sql": "SELECT\n    COUNT(DISTINCT season)      AS seasons_in_dataset,\n    ROUND(AVG(pts), 1)          AS career_avg_ppg\nFROM `nba-data-agent-testing.nba_marts.mart_player_season_totals`\nWHERE player = 'Michael Jordan'"
+  },
+  {
+    "model": "mart_team_season",
+    "question": "Which team had the best Net Rating in the 2015-16 season?",
+    "sql": "SELECT team_abbrev, team, nrtg, w, l\nFROM `nba-data-agent-testing.nba_marts.mart_team_season`\nWHERE season = 2016\nORDER BY nrtg DESC\nLIMIT 5"
+  },
+  {
+    "model": "mart_team_season",
+    "question": "Which team had the highest SRS (Simple Rating System) in any single season in the dataset?",
+    "sql": "SELECT team_abbrev, team, season, srs, w, l\nFROM `nba-data-agent-testing.nba_marts.mart_team_season`\nORDER BY srs DESC\nLIMIT 5"
+  },
+  {
+    "model": "mart_team_season",
+    "question": "How has league average pace changed from the 1994-95 season to the 2018-19 season?",
+    "sql": "SELECT season, ROUND(AVG(pace), 1) AS avg_pace\nFROM `nba-data-agent-testing.nba_marts.mart_team_season`\nWHERE season IN (1995, 2000, 2005, 2010, 2015, 2019)\nGROUP BY season\nORDER BY season"
+  },
+  {
+    "model": "mart_team_season",
+    "question": "What were the top 3 teams by offensive rating in the 2015-16 season?",
+    "sql": "SELECT team_abbrev, team, ortg, nrtg\nFROM `nba-data-agent-testing.nba_marts.mart_team_season`\nWHERE season = 2016\nORDER BY ortg DESC\nLIMIT 3"
+  },
+  {
+    "model": "mart_team_season",
+    "question": "What was the Net Rating of the Chicago Bulls in the 1995-96 season?",
+    "sql": "SELECT team_abbrev, team, nrtg, ortg, drtg, w, l, srs\nFROM `nba-data-agent-testing.nba_marts.mart_team_season`\nWHERE team_abbrev = 'CHI' AND season = 1996"
+  },
+  {
+    "model": "mart_game_logs",
+    "question": "How many wins did the Golden State Warriors have in the 2015-16 regular season?",
+    "sql": "-- season = 2016 is the 2015-16 season (YYYY format)\nSELECT COUNT(*) AS wins\nFROM `nba-data-agent-testing.nba_marts.mart_game_logs`\nWHERE team_abbrev = 'GSW'\n  AND season = 2016\n  AND wl = 'W'"
+  },
+  {
+    "model": "mart_game_logs",
+    "question": "What was the Chicago Bulls' win-loss record in the 1995-96 season?",
+    "sql": "-- The 1995-96 season IS in the data (season = 1996 in YYYY format).\n-- Expected: 72 wins, 10 losses.\nSELECT\n    SUM(CASE WHEN wl = 'W' THEN 1 ELSE 0 END) AS wins,\n    SUM(CASE WHEN wl = 'L' THEN 1 ELSE 0 END) AS losses\nFROM `nba-data-agent-testing.nba_marts.mart_game_logs`\nWHERE team_abbrev = 'CHI' AND season = 1996"
+  },
+  {
+    "model": "mart_game_logs",
+    "question": "What was the Chicago Bulls' win-loss record in the 1994-95 season?",
+    "sql": "-- Coverage check: game logs start at season = 1996 (1995-96 season).\n-- The 1994-95 season is season = 1995, which is NOT in this table.\n-- This query returns 0 rows; the agent must acknowledge the coverage gap.\nSELECT COUNT(*) AS game_count\nFROM `nba-data-agent-testing.nba_marts.mart_game_logs`\nWHERE team_abbrev = 'CHI' AND season = 1995"
+  },
+  {
+    "model": "mart_game_logs",
+    "question": "How many road wins did the Miami Heat record in the 2012-13 regular season?",
+    "sql": "SELECT COUNT(*) AS road_wins\nFROM `nba-data-agent-testing.nba_marts.mart_game_logs`\nWHERE team_abbrev = 'MIA'\n  AND season = 2013\n  AND wl = 'W'\n  AND is_home = false"
+  },
+  {
+    "model": "mart_game_logs",
+    "question": "What was the Golden State Warriors' home record in the 2015-16 season?",
+    "sql": "SELECT\n    SUM(CASE WHEN wl = 'W' THEN 1 ELSE 0 END) AS home_wins,\n    SUM(CASE WHEN wl = 'L' THEN 1 ELSE 0 END) AS home_losses\nFROM `nba-data-agent-testing.nba_marts.mart_game_logs`\nWHERE team_abbrev = 'GSW'\n  AND season = 2016\n  AND is_home = true"
+  },
+  {
+    "model": "mart_game_logs",
+    "question": "Which team had the most wins in any single season in the game log data?",
+    "sql": "SELECT team_abbrev, season, COUNT(*) AS wins\nFROM `nba-data-agent-testing.nba_marts.mart_game_logs`\nWHERE wl = 'W'\nGROUP BY team_abbrev, season\nORDER BY wins DESC\nLIMIT 5"
+  },
+  {
+    "model": "mart_playoff_series",
+    "question": "How many games did the 2016 NBA Finals last, and who won?",
+    "sql": "-- season = 2016 = 2015-16 playoffs\nSELECT team_a, team_b, team_a_wins, team_b_wins, series_winner, series_length\nFROM `nba-data-agent-testing.nba_marts.mart_playoff_series`\nWHERE season = 2016 AND round = 'Finals'"
+  },
+  {
+    "model": "mart_playoff_series",
+    "question": "How many consecutive NBA Finals appearances did the Golden State Warriors make starting in 2015?",
+    "sql": "SELECT season, series_winner,\n       CASE WHEN team_a = 'GSW' THEN team_b ELSE team_a END AS opponent\nFROM `nba-data-agent-testing.nba_marts.mart_playoff_series`\nWHERE round = 'Finals'\n  AND (team_a = 'GSW' OR team_b = 'GSW')\n  AND season BETWEEN 2015 AND 2022\nORDER BY season"
+  },
+  {
+    "model": "mart_playoff_series",
+    "question": "Which team did the Detroit Pistons defeat in the 2004 NBA Finals, and what was the series length?",
+    "sql": "SELECT team_a, team_b, team_a_wins, team_b_wins, series_winner, series_length\nFROM `nba-data-agent-testing.nba_marts.mart_playoff_series`\nWHERE season = 2004 AND round = 'Finals'"
+  },
+  {
+    "model": "mart_playoff_series",
+    "question": "How many total playoff series are in the dataset?",
+    "sql": "SELECT COUNT(*) AS total_series\nFROM `nba-data-agent-testing.nba_marts.mart_playoff_series`"
+  },
+  {
+    "model": "mart_playoff_series",
+    "question": "Which teams reached the NBA Finals in the 2012-13 season?",
+    "sql": "SELECT team_a, team_b, series_winner, series_length\nFROM `nba-data-agent-testing.nba_marts.mart_playoff_series`\nWHERE season = 2013 AND round = 'Finals'"
+  },
+  {
+    "model": "mart_trade_impact",
+    "question": "Which team acquired James Harden in an in-season trade, and when?",
+    "sql": "SELECT player_name, acquiring_team, trading_team, trade_date, season\nFROM `nba-data-agent-testing.nba_marts.mart_trade_impact`\nWHERE player_name LIKE '%Harden%'\nORDER BY trade_date DESC\nLIMIT 5"
+  },
+  {
+    "model": "mart_trade_impact",
+    "question": "Which team did Pau Gasol join after his February 2008 trade, and which team traded him?",
+    "sql": "SELECT player_name, acquiring_team, trading_team, trade_date\nFROM `nba-data-agent-testing.nba_marts.mart_trade_impact`\nWHERE player_name LIKE '%Gasol%'\n  AND season = 2008"
+  },
+  {
+    "model": "mart_trade_impact",
+    "question": "Which team showed the largest improvement in Net Rating from the season before a trade to the season after?",
+    "sql": "-- nrtg columns are for the ACQUIRING team; yr1 - yr_minus1 = two-year delta around the trade\nSELECT player_name, acquiring_team, season,\n       ROUND(nrtg_yr_minus1, 1) AS nrtg_before,\n       ROUND(nrtg_yr1, 1)        AS nrtg_after,\n       ROUND(nrtg_yr1 - nrtg_yr_minus1, 1) AS nrtg_delta\nFROM `nba-data-agent-testing.nba_marts.mart_trade_impact`\nWHERE nrtg_yr1 IS NOT NULL AND nrtg_yr_minus1 IS NOT NULL\nORDER BY nrtg_yr1 - nrtg_yr_minus1 DESC\nLIMIT 10"
+  },
+  {
+    "model": "mart_trade_impact",
+    "question": "How many trades are in the dataset where the acquiring team won the championship in the same season as the trade?",
+    "sql": "SELECT COUNT(*) AS championship_trades\nFROM `nba-data-agent-testing.nba_marts.mart_trade_impact`\nWHERE won_championship_yr0 = true"
+  },
+  {
+    "model": "mart_trade_impact",
+    "question": "Which players traded in the dataset were acquired by teams that then won the championship that season?",
+    "sql": "SELECT player_name, acquiring_team, trading_team, trade_date, season\nFROM `nba-data-agent-testing.nba_marts.mart_trade_impact`\nWHERE won_championship_yr0 = true\nORDER BY trade_date"
+  }
+]

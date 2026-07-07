@@ -1,0 +1,27 @@
+# Source data — not redistributable (see docs/DATA.md)
+data/
+
+# dbt artifacts
+solution/dbt/sports_analytics/target/
+solution/dbt/sports_analytics/dbt_packages/
+solution/dbt/sports_analytics/logs/
+solution/dbt/sports_analytics/.user.yml
+
+# GCP credentials (no blanket *.json — analysis/verified_queries.json is a real artifact)
+service_account*.json
+gcp_key*.json
+*credentials*.json
+adc*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Run logs
+logs/
+
+# OS
+.DS_Store
+Thumbs.db

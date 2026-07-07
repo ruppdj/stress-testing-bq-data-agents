@@ -1,0 +1,42 @@
+version: 2
+
+sources:
+  - name: raw
+    # No database pinned: dbt resolves the source to the profile's project,
+    # so the repo works against whatever GCP project your profile targets.
+    schema: nba_raw
+    description: >
+      Raw NBA tables loaded from Parquet via load_to_bq.py. No transforms applied.
+      Column names have been sanitized from source (% → _pct, / → _per_, . removed,
+      lowercased). See load_to_bq.py for the full rename mapping.
+    tables:
+      - name: player_advanced
+        description: >
+          Player advanced stats per season from Basketball-Reference. Coverage: 1984–2026.
+          Grain: one row per player per season (multi-team seasons have one row per team
+          plus a TOT row). Key metrics: vorp, bpm, ws, ws_per_48, per, ts_pct.
+      - name: player_pergame
+        description: >
+          Player per-game box scores per season from Basketball-Reference. Coverage: 1984–2026.
+          Grain: one row per player per season (same multi-team handling as player_advanced).
+          Key metrics: pts, trb, ast, fg_pct, three_p_pct, ft_pct.
+      - name: team_advanced
+        description: >
+          Team advanced stats per season from Basketball-Reference. Coverage: 1984–2026.
+          Grain: one row per team per season. Key metrics: nrtg, ortg, drtg, pace, srs, mov.
+      - name: team_game_logs
+        description: >
+          Game-by-game team box scores from NBA API. Coverage: 1996–2026 (not available
+          prior to 1996-97 season). Grain: one row per team per game. Key fields: game_date,
+          matchup, wl, pts, and full box score counting stats.
+      - name: playoff_series
+        description: >
+          NBA playoff series results from Basketball-Reference. Coverage: 1984–2025.
+          Grain: one row per playoff series. Key fields: round, team_a, team_b,
+          wins_a, wins_b, series_winner, series_length.
+      - name: trade_impact
+        description: >
+          In-season NBA trades enriched with pre/post player and team stats.
+          Coverage: 1997–2025. Grain: one row per player-trade event. Key fields:
+          player, acquiring_team, trading_team, trade_date, vorp/bpm/ws48 pre-trade,
+          team nrtg in yr-1/0/+1, playoff seed and round yr0 and yr1.
