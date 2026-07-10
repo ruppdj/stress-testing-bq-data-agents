@@ -133,3 +133,20 @@ Canonical graded set: `analysis/eval_runs/2026-07-06_{raw,prod,dev}_v2_run02.md`
 §I consequences for earlier sections: E1/E2 (n=1 caveat) superseded by I8 for
 the trap subset; §F's "no claim the dev sweep is stable under repetition"
 upgraded for traps only (36/36 today) — Part 1 stability remains untested.
+
+## J. 2026-07-10 additions (v2-noflag ablation arm)
+
+| # | Claim | Source |
+|---|---|---|
+| J1 | Ablation arm design: fourth arm identical to dev v2 except `mart_player_season_totals` loses the `is_traded_player` column and all 2,191 TRD rows (view layer over dev, `nba_marts_ablation`); grounding/table descriptions scrubbed of TRD/flag content under the pre-registered rule — remove false claims and both-direction steering, add no warnings. All 26 verified queries uploaded unchanged (SQL audited clean) | decisions.md 2026-07-10 (design entry); agent_test_plan.md "Ablation arm — v2-noflag"; `scripts/create_ablation_views.py`; `analysis/agent_instructions_ablation.md` |
+| J2 | All ablation fingerprints pre-registered from BQ before any run: B2 totals-only decoy = Brandon Ingram 22.2 (18 g; survives only because he played 0 g for the acquiring team); B3 = Drummond absent, Sabonis 769 completes a clean top 5; B4 = 40 (Harden/Vučević/LeVert missing); B1 = 0 totals rows / 2 splits rows (visible gap) | agent_test_plan.md ablation pre-registration (2026-07-10, dated before the runs) |
+| J3 | Result: five for five on the pre-registration. B1 PASS+ (visible 0-row anomaly → splits recovery, weighted 10.8); B2 FAIL Ingram 22.2; B3 FAIL Sabonis-list; B4 FAIL 40 — every silent decoy hit exactly; traps 9/9 (scrub control held) | `eval_runs/2026-07-10_ablation_bonus_run02.md`; `eval_runs/2026-07-10_ablation_bonus2_run01.md`; decisions.md 2026-07-10 (ratification entry) |
+| J4 | Same-day dev control PASS: real v2 ran the LOWER() name join (trade table → season totals) — the exact query shape that produced AD 24.69 on raw/prod — and returned Dončić 28.16/50 g. Crosswalk exercised at query time; closes the 07-07 dev-B2 adjudication gap. Ratified PASS with note (confabulated Ingram TRD-mechanism aside; no outside-dataset content) | `eval_runs/2026-07-10_dev_b2_run01.md` |
+| J5 | B4 naming-contract exhibit (verbatim from the reasoning stream): the agent raised the traded-player question itself, then dismissed it — "the key phrase here is 'player season totals'… this strongly suggests that even if a player was traded, their season total… would be recorded once per player-season." Dan's ruling: trusting the implied contract was reasonable; the ablation broke the contract; cause is data-model-level | `eval_runs/2026-07-10_ablation_bonus2_run01.md` B4 reasoning + Notes; decisions.md 2026-07-10 |
+| J6 | B2 mechanism: the ablated agent never attempted the trade→splits join — reasoning explicitly considered `mart_player_team_splits` and rejected it ("that would give me stats for specific teams… not the player's total season performance"), then "double-checked" by re-reading the same result set | `eval_runs/2026-07-10_ablation_bonus_run02.md` B2 reasoning |
+| J7 | The same probes flipped with hazard visibility: B3/B4 passed on ALL arms 07-07 (hazard = visible duplicate rows) and failed on the ablated arm 07-10 (hazard = silently missing rows) — prospective, pre-registered support for the I3 synthesis on a v2-grade agent | I2/I3 rows; J2/J3 rows; agent_test_plan.md ablation Outcome note |
+| J8 | Scope guard: ablation probe results are single rollouts (one nine-trap run); the arm tests a mechanism, not a rate, and stays out of the headline tables | agent_test_plan.md ablation section; WRITEUP.md Caveats |
+
+New numbers rows (§G source of truth): Ingram 22.2 / 18 g (ablation B2 decoy);
+Sabonis 769 (ablation B3 #5); 40 (ablation B4); ablated totals row count
+17,136 = 19,327 − 2,191; dev control Dončić 28.16 / 50 g.

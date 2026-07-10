@@ -7,26 +7,27 @@ the experiment.*
 
 ---
 
-For most of this year, AI has been my very fast intern: an advanced search
-engine that also writes functions I then organize, review, and test myself.
+For most of this year, AI has been my very fast intern: it writes the first
+drafts and the functions, I organize, review, and test everything.
 That works because I'm the safety net. Then small nonprofits I consult for
 started asking a different question. They have no analyst, no data engineer,
 no AI budget — can text-to-SQL data agents help *them*? That's a different
 bar entirely: not "can the agent answer questions" but "can a non-technical
-person pull standard reports, ask questions shaped like those reports, and
-trust what comes back, with nobody checking the SQL."
+person pull standard reports, ask questions shaped like those reports or
+based on similar grains, and trust what comes back, with nobody checking the
+SQL."
 
 This repo is the experiment I ran to find out, with every graded answer
 public.
 
 ## The test
 
-Real NBA data I know cold — six tables, player seasons from 1984, game logs,
+Real NBA data I know — six tables, player seasons from 1984, game logs,
 playoff series, trades. Real data was the point: an earlier attempt on
 synthetic data failed because wrong answers were unrecognizable. The dataset
 is deliberately simple. I wanted to test general setup and ability, not
-complex join logic — if agents struggle here, the harder cases answer
-themselves.
+complex join logic — if agents struggle here, there is no need to test the
+harder joins.
 
 Three versions of the same BigQuery Conversational Analytics agent, each with
 more human work behind it:
@@ -54,13 +55,14 @@ fails — labels don't survive a screenshot.
 Method notes that matter for trusting the results:
 
 - Every expected answer was verified in BigQuery before any run.
-- Questions are tiered: grounded regression (a matching verified query
-  exists), near-transfer (one or two moves from a grounded pattern —
-  permanently barred from the verified-query package, to catch agents
-  returning the nearest example's answer), and novel multi-hop. Follow-up
-  probes were pre-registered: expected answer, decoy fingerprints, and
-  per-arm predictions written down from BigQuery before any agent saw the
-  question.
+- The questions vary in distance from the agent's own examples: some match a
+  verified query it was handed, some sit one or two steps away — those
+  deliberately never get a matching example, to catch an agent that just
+  replays the nearest example's answer — and some need real multi-step work.
+- The follow-up probes were written down before any agent saw them: the
+  expected answer, the exact wrong number each likely mistake would produce,
+  and my prediction for each agent — all pulled from BigQuery first. So when
+  a wrong answer showed up, I knew which mistake had made it.
 - All arms are tested the same day, because the platform drifts (below).
 - Grading is mine, against the pre-verified ground truth; graded logs with
   the agents' full responses, reasoning streams, and SQL are in this repo.
@@ -78,13 +80,12 @@ Method notes that matter for trusting the results:
 
 Two results matter more than the totals.
 
-**Zero must-answer questions failed — including the raw agent.** v0, with no
-column details and no help, defused nearly every landmine planted in the
-data. It cast the string-typed numbers, worked out the season encoding,
-parsed home/road out of matchup strings, and checked the data's actual
-bounds before refusing anything. The mechanical layer — the part that demos
-best — is the part the model barely needed help with.
-
+**Zero must-answer questions failed — including the raw agent.** With no
+column details and no help, v0 untangled the messy formats and found its way
+around the quirks planted in the data: it cast the numbers stored as text,
+worked out the season encoding, parsed home/road out of matchup strings, and
+checked the data's actual bounds before refusing anything. The mechanics
+were never the problem.
 **Every FAIL on the board is a trust violation.** The raw agent ran a
 forecasting function instead of refusing a prediction question, and
 volunteered Wilt Chamberlain's and Magic Johnson's famous numbers from its
@@ -160,9 +161,8 @@ only triggers on what's visible.
 
 ## Removing the shortcut: an ablation on the curated agent
 
-v2's clean sweep left one claim untested. Its pass on the traded-player
-ranking went through the curated season-totals table — the pre-aggregated
-row made the dangerous join unnecessary. So which was doing the work: the
+v2's results left one claim untested. It only used the curated season-totals
+table, making the unsafe join unneeded. So which was doing the work: the
 curation, or the agent's own care?
 
 To answer that, I built a fourth arm: identical to v2 — same instructions,
@@ -184,27 +184,28 @@ BigQuery exactly what each wrong path would produce.
 Five for five against the pre-registration, and the nine traps stayed clean
 — the scrub moved nothing else. Where the missing data produced an empty
 result, the agent noticed instantly ("Wait — 0 rows for James Harden?"),
-investigated, and hand-built the correct weighted answer. Where the missing
-data produced a plausible-looking result, it never looked twice. These are
+investigated, and hand-built the correct weighted answer. Where
+probable-looking data was produced, it never looked twice. These are
 the same probes the uncurated agents aced a few days earlier — when the
 hazard was *visible duplicate rows*. The ablation converted the same hazard
 into *silently missing rows*, and the results flipped with it.
 
-The count question produced the exhibit I'd show anyone who designs
-agent-facing schemas. The agent asked itself exactly the right question —
+The count question revealed one of the most interesting things I'd show
+anyone who designs agent-facing schemas. The agent asked itself exactly the
+right question (and one an old data nerd never trusts...) —
 could traded players be split across rows? — and then talked itself out of
 it: *"the key phrase here is 'player season totals'… this strongly suggests
 that even if a player was traded, their season total would be recorded
 once."* It trusted the implied contract of the table's name. Reasonably so
-— that is precisely the contract the real v2 keeps and the ablation
+— that's exactly the contract the real v2 keeps and the ablation
 deliberately broke. Schema names and descriptions aren't labels; they're
 instructions the model builds on.
 
-And the ranking question sharpened the earlier finding: the uncurated
+And the top-scorer question sharpened the earlier finding: the uncurated
 agents' name-join failures were never really about join skill. Given a
 totals-shaped table, the ablated agent didn't even attempt the trade-table
 join — its reasoning explicitly considered the splits table and rejected
-it. Meanwhile, a same-day control run on the real v2 finally exercised the
+it. Meanwhile, a control run on the real v2 finally exercised the
 join the original run had skipped: it joined the trade table to player
 stats by name — the exact query shape that produced Anthony Davis on the
 other two arms — and got Dončić, because the crosswalk had made the names
@@ -233,7 +234,7 @@ goal, but the stored answer's assumptions become invisible.
 
 ## The service changed under me
 
-Midway through, response formatting shifted — answers fragmenting across
+Midway through this experiment, response formatting shifted — answers fragmenting across
 messages, new header styles — with nothing in the release notes (last
 updated weeks earlier). The API is v1alpha: no model pinning, no version
 field, no way to know what changed. I'd frozen v1 in June for exactly this
@@ -254,7 +255,7 @@ but the agent didn't inherit a lie from its own grounding.
 Every headline number above is one graded run per agent. Early on I watched
 the Wilt trap, on the identical frozen agent, go FAIL → PASS → FAIL across
 eleven days. So before writing this up, I ran the stability check: all nine
-traps, three repetitions per arm, all nine runs inside one 31-minute window.
+trap questions, three repetitions per arm, all nine runs done in one day.
 
 | Arm | Rep 1 | Rep 2 | Rep 3 | Total (27 trap rollouts) |
 |---|---|---|---|---|
@@ -271,16 +272,16 @@ rollout. It's still not a guarantee.
 
 **The leaks are unpredictable — in both directions.** The frozen v1 agent had
 correctly refused to give Magic Johnson's out-of-coverage career total on
-three separate dates; on panel day it volunteered the true number in four of
+three separate dates; on another day it volunteered the true number in four of
 four attempts. Its Wilt leak went the other way within a single half-hour:
 failed the first rep, passed the next two, minutes apart. The raw agent leaked
 the Wilt stat and ran the forecast in every observation to date, but its
 Magic leak came and went the same day. I can't predict when any of these
 will fire, and I have no basis to expect the specific patterns I saw to
 hold in future runs. The only safe statement: **a passing trap eval
-certifies that rollout, not the failure mode's absence** — and if the
-platform won't pin the model, a scheduled eval suite is the only change
-detection you have.
+certifies that rollout, not the failure mode's absence** — the inherent
+variability or randomness in the model may make certifying absence
+impossible.
 
 **The sharpest exhibit in the whole project:** in two of the panel's leaking
 answers, the frozen v1 agent produced a *textbook* boundary response —
@@ -294,27 +295,29 @@ this; nothing I found provably eliminates it.
 
 **These agents are not ready for non-technical supervision.** Not because
 they're weak — because their failures are confident, intermittent, and
-unlike human mistakes. A human analyst's errors cluster where the work is
-hard; the agent's worst errors landed on easy-looking questions and read
-exactly like its correct answers. If nobody on staff can review the logic,
-nobody catches the week the leak fires.
+unlike human mistakes. A human analyst's errors follow standard patterns,
+and there are already workflows to catch them; with the variability in the
+agent's logic flows, its worst errors can land anywhere — here they landed
+on easy-looking questions and read exactly like its correct answers. If
+nobody on staff can review the logic, nobody catches the week the leak
+fires.
 
-What *does* work today: a well-defined report menu on a curated,
+What *seems* to work today: a well-defined report menu on a curated,
 single-grain mart — the agent as an augmented report writer, where questions
 stay close to verified territory and consistency is the point. That's a
 real, useful thing for a small org. It's just not open-ended Q&A.
 
-And the preparation isn't wasted either way. The pillars of good data agency
-turned out to be the same ones as ever: domain expertise and deep
-understanding of your own data. The audit, the cleanup, the single-grain
+And the preparation isn't wasted either way. The pillars turned out to be
+the same ones as ever: domain expertise and deep understanding of your own
+data. The audit, the cleanup, the single-grain
 marts, the join keys — that work pays off now in agent reliability, and
 keeps paying off when the agents get good enough to trust more.
 
 One more finding worth stating plainly: AI built this project with me in a
-few days — a solid two weeks of work at pre-AI pace. But speed was the only
-thing it removed. Every issue above was found by human review, and several
+few days — a solid two weeks of work at pre-AI pace. But time was the only
+thing it saved. Every issue above was found by human review, and several
 assumptions the AI made would have compounded quietly if I hadn't known the
-data cold. Rapid iteration, yes. A replacement for knowing what safe and
+data. Rapid iteration, yes. A replacement for knowing what safe and
 complete looks like, no.
 
 ## Caveats
@@ -345,12 +348,13 @@ complete looks like, no.
    imply, so a table that breaks its own name's contract fails silently.
 4. Verified queries standardize answers and hide assumptions. Know which one
    you're getting.
-5. Trust failures are unpredictable in timing and persistence. Eval them
-   repeatedly, on a schedule, forever — it's your only change detection on
-   an unpinned platform.
-6. Not ready for non-technical supervision. Ready to be a fast, consistent
-   report writer behind a defined menu — and the data work you do to get
-   that is the same work that matters when they improve.
+5. Trust failures are unpredictable in timing and persistence — most likely
+   plain randomness in the model, not the platform changing underneath you:
+   the one change we caught was formatting, never content. Eval repeatedly,
+   on a schedule, forever; a passing run certifies nothing beyond itself.
+6. Not ready for non-technical supervision. What it seems ready for: a fast,
+   consistent report writer behind a defined menu — and the data work you do
+   to get that is the same work that matters when they improve.
 
 ---
 

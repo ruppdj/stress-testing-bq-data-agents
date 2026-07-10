@@ -75,6 +75,21 @@ TARGETS = {
         "tables": RAW_TABLES,
         "system_instruction": RAW_SYSTEM_INSTRUCTION,
     },
+    "ablation": {
+        # v2-noflag ablation arm (agent_test_plan.md "Ablation arm", 2026-07-10):
+        # dev v2 with the traded-player shortcut removed. Reads the
+        # nba_marts_ablation view layer (created by create_ablation_views.py —
+        # season totals lose the is_traded_player column and all TRD rows).
+        # Grounding = the v2 package with TRD/flag content scrubbed:
+        # instructions from agent_instructions_ablation.md, glossary term
+        # "Traded Player" dropped, all 26 verified queries unchanged.
+        "agent_id": "nba-dev-agent-v2-ablation",
+        "dataset": "nba_marts_ablation",
+        "eval_log": "evaluation_log_ablation.md",
+        "tables": MART_TABLES,
+        "instructions_file": "agent_instructions_ablation.md",
+        "drop_glossary": ["Traded Player"],
+    },
 }
 
 

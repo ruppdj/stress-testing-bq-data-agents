@@ -247,6 +247,9 @@ SUITES = {
     # run 3x per arm on the same day to put pass-rate numbers behind the
     # 5->7->9 gradient. Part 1 empty by design.
     "p2": ([], SUITE_PART2),
+    # B2 alone (2026-07-10): same-day dev control anchor for the v2-noflag
+    # ablation arm — see agent_test_plan.md "Ablation arm — v2-noflag".
+    "b2": (BONUS_PART1[1:2], []),
 }
 
 # Selected by main() from --suite; loops below read these.

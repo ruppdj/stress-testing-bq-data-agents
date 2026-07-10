@@ -12,16 +12,22 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 json_queries_path = os.path.join(REPO_ROOT, "analysis", "verified_queries.json")
 instructions_path = os.path.join(REPO_ROOT, "analysis", "agent_instructions.md")
 
+def resolve_instructions_path(cfg):
+    # Targets may override the instructions source (e.g. the ablation arm's
+    # scrubbed copy); default is the canonical v2 instructions file.
+    return os.path.join(REPO_ROOT, "analysis",
+                        cfg.get("instructions_file", "agent_instructions.md"))
+
 def get_token():
     credentials, project = google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
     auth_req = google.auth.transport.requests.Request()
     credentials.refresh(auth_req)
     return credentials.token
 
-def extract_system_instructions():
-    if not os.path.exists(instructions_path):
+def extract_system_instructions(path):
+    if not os.path.exists(path):
         return None
-    with open(instructions_path, 'r') as f:
+    with open(path, 'r') as f:
         content = f.read()
 
     match = re.search(r'## Instructions \(paste into Console\)\s*```\s*(.*?)\s*```', content, re.DOTALL)
@@ -54,7 +60,9 @@ def main():
     with open(json_queries_path, 'r') as f:
         queries = json.loads(agent_config.rewrite_dataset(f.read(), cfg))
 
-    system_instruction = extract_system_instructions()
+    instr_path = resolve_instructions_path(cfg)
+    print(f"instructions source: {os.path.basename(instr_path)}")
+    system_instruction = extract_system_instructions(instr_path)
     if not system_instruction:
         print("Error: Could not extract system instructions.")
         return
@@ -115,6 +123,11 @@ def main():
         }
     ]
     
+    dropped = set(cfg.get("drop_glossary", []))
+    if dropped:
+        glossary_terms = [t for t in glossary_terms if t["displayName"] not in dropped]
+        print(f"glossary terms dropped for this target: {sorted(dropped)}")
+
     patch_body = {
         "dataAnalyticsAgent": {
             "publishedContext": {

@@ -50,7 +50,7 @@ section.
 | [analysis/2026-07-07-p2_stability_panel.md](analysis/2026-07-07-p2_stability_panel.md) | The stability panel: grade matrix, per-question history |
 | [analysis/2026-07-06-v1_drift_audit.md](analysis/2026-07-06-v1_drift_audit.md) | Drift audit of the frozen agent (service changed mid-project) |
 | [analysis/evaluation_log.md](analysis/evaluation_log.md), [_dev](analysis/evaluation_log_dev.md), [_raw](analysis/evaluation_log_raw.md) | June legacy-suite graded logs (drift baselines) |
-| [analysis/agent_instructions.md](analysis/agent_instructions.md), [verified_queries.json](analysis/verified_queries.json) | The grounding package the curated agents received |
+| [analysis/agent_instructions.md](analysis/agent_instructions.md), [verified_queries.json](analysis/verified_queries.json) | The grounding package the curated agents received ([agent_instructions_ablation.md](analysis/agent_instructions_ablation.md) is the ablation arm's scrubbed variant) |
 | [analysis/agent_setup_guide.md](analysis/agent_setup_guide.md) | Programmatic agent configuration via the Conversational Analytics API (incl. the regional-endpoint 403 gotcha) |
 | [solution/dbt/sports_analytics/](solution/dbt/sports_analytics/) | The curation layer itself: staging + marts + seeds (team & player-name crosswalks) + tests |
 | [scripts/](scripts/) | Loader, agent creation/config/upload, evaluation runner |

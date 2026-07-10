@@ -215,6 +215,86 @@ demoted or split-valued (PARTIAL-B or FAIL); B4 → 47 or 44 likely. If v0/v1
 pass both, the ranking-hazard hypothesis is wrong too and the Q2/Q4 grades
 need a second look.
 
+### Ablation arm — v2-noflag (added 2026-07-10, third wave — closes the B2 grading gap)
+
+Motivation: dev v2's B2 PASS was adjudicated via the disclosed
+`is_traded_player = true` path — the name crosswalk was never exercised at
+query time (ratified judgment call, run history 2026-07-07). This arm removes
+the shortcut so B2's only correct path is the one that killed raw/prod:
+trade cohort → name join → splits aggregation. Accepted side effect (a
+feature): B1/B3/B4's easy path is also removed, turning the ablated totals
+table itself into a **silent-omission hazard** — a direct test of the
+visible-vs-silent synthesis on the curated arm.
+
+Arm definition (ratify before build):
+- Dataset `nba_marts_ablation`: views over `nba_marts_dev`.
+  `mart_player_season_totals` → `SELECT * EXCEPT(is_traded_player) … WHERE
+  team_abbrev != 'TRD'` (removes exactly **2,191 rows** — verified in BQ
+  2026-07-10). All other marts pass through unchanged.
+- New agent `nba-dev-agent-v2-ablation` (new `ablation` target in
+  `agent_config.py`); the dev v2 agent and its dataset are untouched.
+- Grounding = the v2 package minus TRD/flag content: instructions lines
+  38–40 and 70 rewritten; glossary term 6 ("Traded Player") dropped.
+  **Verified queries audited 2026-07-10: all 26 SQL bodies clean** (zero
+  `is_traded_player`/`TRD` references; only two NL question texts contain
+  the word "traded") — uploaded unchanged.
+- Scrub rule (the no-teaching-to-test line): remove claims the ablation makes
+  false ("exactly one row per player per season", "no deduplication is
+  needed", the TRD-join warning) and remove usage steering in BOTH
+  directions — including instruction line 39's "use splits **only** for
+  franchise lookups", which would actively point away from the correct path.
+  Do NOT add warning language: the hazard must stay discoverable, not
+  documented. Same rule for the BQ view descriptions (persist_docs text
+  carries 13 TRD references in `marts.yml` today).
+
+Suite: B1–B4 (`--suite bonus` + `--suite bonus2`; questions, ground truth,
+and rubrics unchanged from above) + the 9 traps (config-change control) on
+the ablation arm; same-day dev v2 B2 rerun as control anchor. raw/prod are
+not rerun — no claim about them changes.
+
+Pre-registered ablation fingerprints (computed in BQ 2026-07-10, before any
+run):
+
+| Q | Correct path (answer unchanged) | New ablation decoy (totals-only path — silent) | Grade if hit |
+|---|---|---|---|
+| B1 | 10.8 APG via splits. Harden in ablated totals: **0 rows**; splits: 2 rows (verified) | n/a — the empty totals lookup is a VISIBLE anomaly | — |
+| B2 | **Luka Dončić 28.16, 50 g** via trade cohort → splits aggregation; `LOWER()` name join on crosswalk-canonical dev names verified working 2026-07-10 | **Brandon Ingram 22.2 PPG** — trade cohort joined to ablated totals: every mid-season split player silently drops; Ingram survives only because he played 0 g for the acquiring team, so he kept a regular totals row. **AD 24.69** remains the name-join-miss fingerprint and should NOT appear post-crosswalk — if it does, the crosswalk claim itself is falsified. | FAIL (silent omission — same rule as the existing B2 FAIL clause) |
+| B3 | Gobert 918 / Whiteside 905 / Drummond 863 / Giannis 857 / Valančiūnas 791 via splits | **Drummond absent entirely**: Gobert 918 / Whiteside 905 / Giannis 857 / Valančiūnas 791 / **Sabonis 769** (verified) — a same-shape top-5 with no visible anomaly | FAIL (wrong cohort, silent) |
+| B4 | **43** via aggregate-then-threshold on splits | **40** = ablated-totals count (Harden / Vučević / LeVert silently missing; verified). 47 / 44 remain the split-mishandling fingerprints | FAIL (row-count artifact, per existing rubric) |
+
+Pre-registered arm expectations (2026-07-10, before any run): **B1 — PASS**
+(the empty totals lookup is visible; every arm has recovered from visible
+anomalies to date). **B2 — the experiment's point:** PASS via the splits
+join is the crosswalk-works outcome; **Ingram 22.2 is the
+hypothesis-consistent silent miss** (the totals-only join returns a
+plausible nonempty list, so nothing visible forces the splits path); AD
+24.69 would falsify the crosswalk claim. No confident prediction is honest
+here — computing the Ingram decoy weakened the earlier informal "PASS
+expected". **B3/B4 —** the strict visible-vs-silent reading predicts silent
+misses (Sabonis-list / 40): the ablated totals look clean, with no duplicate
+rows to trigger vigilance. Counterweight: on 2026-07-07 the raw arm recalled
+Drummond's DET/CLE trade from world knowledge *before* seeing any anomaly,
+so knowledge-driven vigilance may rescue B3/B4. **Traps — 9/9 expected**;
+any trap movement is a confound: investigate before grading the B questions.
+
+**Outcome (2026-07-10, graded + ratified same day): five for five against the
+pre-registration.** B1 PASS+ (visible 0-row anomaly → splits recovery). B2
+FAIL — Ingram 22.2, the totals-only decoy, hit exactly; the agent
+considered-and-rejected the splits table. B3 FAIL — the Sabonis-list, exact
+to the rebound; no traded-player check fired. B4 FAIL — 40; the check DID
+fire and was falsely reassured by the table's naming/doc contract (Dan's
+ruling note: trusting the implied contract of "season totals" was reasonable
+— the ablation broke the contract; the cause is data-model-level). Traps
+9/9, scrub control holds. Same-day dev control: PASS with the LOWER() name
+join — **the crosswalk was exercised at query time on the real v2 arm and
+held**, closing the 2026-07-07 dev-B2 adjudication gap. Net synthesis
+upgrade: the visible-vs-silent hazard split now has prospective,
+pre-registered support on a v2-grade agent, and the B2 mechanism is
+sharpened — the uncurated failure was never really about name-matching skill;
+agents don't attempt the join when a totals-shaped table exists, so the only
+reliable fix is the one that keeps the schema's implied promises (TRD rows +
+crosswalk), not agent vigilance.
+
 ---
 
 ## Part 3 — Failure modes to watch for
@@ -261,6 +341,9 @@ in the grounding package (grounding ≠ eval suite).
 | 2026-07-07 | raw v0 | p2 stability panel (3 reps) | **20/1/6** over 27 rollouts (6-7-7 by rep) — P2-3 FAIL 3/3 (AI.FORECAST), P2-5 FAIL 3/3 (50.4); P2-7 PASS 3/3 after failing the same-day ablation | `analysis/eval_runs/2026-07-07_raw_p2_run01–03.md`; graded in `analysis/2026-07-07-p2_stability_panel.md` |
 | 2026-07-07 | prod v1 | p2 stability panel (3 reps) | **23/0/4** over 27 rollouts (7-8-8 by rep) — P2-7 FAIL 3/3 (17,707; 4/4 incl. ablation, after passing 6/26, 7/4, 7/6); P2-5 FAIL rep 1 only | `analysis/eval_runs/2026-07-07_prod_p2_run01–03.md`; graded in `analysis/2026-07-07-p2_stability_panel.md` |
 | 2026-07-07 | dev v2 | p2 stability panel (3 reps) | **27/0/0** over 27 rollouts (36/36 traps today incl. ablation) | `analysis/eval_runs/2026-07-07_dev_p2_run02–04.md` (run01 = smoke test); graded in `analysis/2026-07-07-p2_stability_panel.md` |
+| 2026-07-10 | ablation v2-noflag | bonus (B1/B2 + 9 traps) | 10 PASS (incl. 1 PASS+) / 0 / 1 FAIL — **B2 Ingram 22.2 = pre-registered totals-only decoy hit exactly**; B1 PASS+ via visible 0-row recovery; traps 9/9 (scrub-control holds) | `analysis/eval_runs/2026-07-10_ablation_bonus_run02.md` (run01 = smoke test) |
+| 2026-07-10 | ablation v2-noflag | bonus2 (B3/B4) | 0 / 0 / 2 FAIL — **B3 Sabonis-list (Drummond silently absent) and B4 = 40, both pre-registered silent fingerprints exact**; B4's traded-player check fired but was falsely reassured by the "season totals" naming/doc contract | `analysis/eval_runs/2026-07-10_ablation_bonus2_run01.md` |
+| 2026-07-10 | dev v2 | b2 (ablation control) | 1 PASS — Luka 28.16/50 g via LOWER() name join trade→totals: **crosswalk exercised at query time and held** (same join shape = AD 24.69 on raw/prod 07-07); Ingram-mechanism aside noted, ratified PASS with note | `analysis/eval_runs/2026-07-10_dev_b2_run01.md` |
 
 Legacy-suite grades use the 2026-07-03 scale retroactively. New runs land in
 `analysis/eval_runs/`. Grades ratified by Dan 2026-07-07 (incl. three judgment
