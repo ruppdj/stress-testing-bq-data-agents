@@ -44,6 +44,15 @@ more human work behind it:
   each, same-name players separated, text repaired at load, engineered name
   crosswalks — and instructions revised against v1's observed failures.
 
+One scope note. BigQuery Conversational Analytics is a managed black box:
+no temperature control, no custom system prompt, no way to pin — or even
+identify — the model underneath (the API is v1alpha). So when an agent fails
+below, I can't tell you whether the underlying model or the platform's own
+planning loop failed, and nothing here measures what a custom-built
+text-to-SQL pipeline could do. That's the point. A zero-code, out-of-the-box
+product is exactly what an org with no data team would actually deploy — the
+product tier, not the model ceiling, is what's under test.
+
 The eval is 45 questions: 36 that must be answered correctly and 9 traps that
 must be refused or caveated — forecast requests, stats outside the data's
 coverage, career totals the data only partially contains, two different
@@ -92,8 +101,13 @@ volunteered Wilt Chamberlain's and Magic Johnson's famous numbers from its
 training memory when the dataset doesn't cover those years. v1 still
 volunteered the Wilt stat. None of these are query errors. They're the model
 reaching outside the data while sounding exactly as confident as when it
-doesn't. This is the failure mode that should decide whether you hand an
-agent to a non-technical team — because they're the users who can't tell.
+doesn't. And the danger hides in how good the leak looks: Magic's 17,707 is
+the *right* number. An agent willing to cross the database boundary for a
+true fact will cross it for a hallucinated one, or answer from memory the
+day a table sits empty — and the answer carries no signal of which you got.
+The crossing is the failure; the accuracy is luck. This is the failure mode
+that should decide whether you hand an agent to a non-technical team —
+because they're the users who can't tell.
 
 So the curation gradient — 5 of 9 traps survived, then 7, then 9 — is the
 finding. Curation buys trust behavior, not query competence. And the
@@ -148,7 +162,12 @@ raw agent had a normalized-name column available and didn't use it.
 
 The synthesis: **these agents fix hazards they can see — duplicate rows
 staring at them from the result set — and silently miss hazards that leave
-nothing to see.** The fix on v2 was boring: a 36-row name crosswalk mapping
+nothing to see.** The mechanism is precise: the model can only doubt what
+lands in its context window. Duplicate rows, a type mismatch, an empty
+result — those show up in the query output it reads back, and it
+self-corrects. Rows that silently never joined produce a clean, well-formed
+table with no anomaly in it, and the model has no basis to doubt ten
+plausible rows. The fix on v2 was boring: a 36-row name crosswalk mapping
 the trade table's spellings to the player tables' (justified independently —
 36 silently unjoinable names is a data bug regardless of any eval). With it,
 v2 answered Dončić correctly — though, notably, not by performing the
@@ -212,6 +231,16 @@ other two arms — and got Dončić, because the crosswalk had made the names
 match. The fix holds at query time; the vigilance it replaces was never
 there to begin with.
 
+The ablation also prices the trade-off in my own fix, so let me state it.
+"One grain per table" didn't collapse anything to one table: v2 exposes the
+same entity at two grains — season totals and team splits — and steers the
+agent between them with instructions and naming. Those routing rules are
+single points of failure. When the totals table broke its contract, the
+agent didn't cross-check the splits table that still held the truth; it
+failed silently. Two grains of one entity is standing coordination overhead:
+the physical data, the table names, and the docs have to stay perfectly
+aligned, forever, or you're back in this section.
+
 ## The verified-query short circuit
 
 Verified example queries are the platform's main grounding tool, and they
@@ -248,7 +277,12 @@ One experiment came back null, and nulls deserve reporting: one of v1's
 verified queries accidentally embedded the same false premise as my
 sycophancy trap. I left it in deliberately and fixed it only in v2. All three
 agents refuted the premise anyway. One question, single runs — weak evidence,
-but the agent didn't inherit a lie from its own grounding.
+but the agent didn't inherit a lie from its own grounding. The likeliest
+reason even the raw agent refuted it: the premise is false about one of the
+most famous stat lines in the sport — exactly where a model's priors are
+strongest — and the data contradicted it too. A subtler false premise, one
+with no famous counter-example, is the harder test, and this experiment
+doesn't cover it.
 
 ## How stable are these results?
 
@@ -268,7 +302,10 @@ Three things came out of the panel.
 **The gradient is real.** The ordering held in every repetition, not just on
 one lucky run. v2 refused or correctly caveated all 27 trap rollouts — 36
 counting that morning's re-run. That's now a measured rate, not a single
-rollout. It's still not a guarantee.
+rollout — but a small one. By the rule of three, 27 clean rollouts only
+bound the true trap-failure rate below roughly 11% at 95% confidence. The
+panel demonstrates the gradient; it is far too small to demonstrate absence
+— a 1-in-10 leak could hide behind it.
 
 **The leaks are unpredictable — in both directions.** The frozen v1 agent had
 correctly refused to give Magic Johnson's out-of-coverage career total on
@@ -307,7 +344,9 @@ single-grain mart — the agent as an augmented report writer, where questions
 stay close to verified territory and consistency is the point. That's a
 real, useful thing for a small org. It's just not open-ended Q&A.
 
-And the preparation isn't wasted either way. The pillars turned out to be
+And the preparation isn't wasted either way. These agents don't eliminate
+data engineering; they move it — from writing each query to designing data
+models the agent can't misread. The pillars turned out to be
 the same ones as ever: domain expertise and deep understanding of your own
 data. The audit, the cleanup, the single-grain
 marts, the join keys — that work pays off now in agent reliability, and
@@ -327,7 +366,8 @@ complete looks like, no.
 - Trap stability is measured at three same-day repetitions per arm (four
   counting the ablation re-run). Same-day repetitions cannot catch behavior
   that only appears on other days — the Magic leak demonstrated exactly
-  that.
+  that. And 27 clean rollouts bound the true failure rate below only ~11%
+  (rule of three, 95% confidence): the panel shows a gradient, not absence.
 - The drift's cause is unknown — no pinning means a platform change is
   indistinguishable from my own configuration growth. One grading anomaly,
   consistent with the response fragmentation, is disclosed in the logs.
@@ -341,11 +381,16 @@ complete looks like, no.
 
 1. Curation buys trust behavior, not query competence. Spend accordingly.
 2. Some failures live in the data model. Fix them in dbt, not the prompt —
-   one grain per table, engineered join keys everywhere.
-3. Agents fix hazards they can see and miss hazards that leave no trace.
-   Make hazards impossible; don't rely on vigilance. And treat schema names
-   and descriptions as promises — the model builds on the contract they
-   imply, so a table that breaks its own name's contract fails silently.
+   one grain per table, engineered join keys everywhere. And if one entity
+   needs two grains, that's two tables whose names, docs, and contents must
+   stay perfectly aligned — the routing between them is a single point of
+   failure.
+3. Agents self-correct only when the evidence of the error lands in their
+   context window — duplicate rows, type errors, empty results in the query
+   output. Silent drops leave no evidence, so nothing triggers. Make hazards
+   impossible; don't rely on vigilance. And treat schema names and
+   descriptions as promises — the model builds on the contract they imply,
+   so a table that breaks its own name's contract fails silently.
 4. Verified queries standardize answers and hide assumptions. Know which one
    you're getting.
 5. Trust failures are unpredictable in timing and persistence — most likely
