@@ -33,6 +33,12 @@ sourcing content from outside the dataset. Zero must-answer questions failed
 on any agent. The details, and why the failures matter more than the scores,
 are in the [writeup](WRITEUP.md).
 
+There is also a fourth, deliberately broken variant of the curated agent —
+an ablation built to test *why* curation works. With its traded-player
+shortcut removed (and nothing warning it), it fell into every pre-registered
+silent trap while acing the visible one — see the writeup's ablation
+section.
+
 ## Repo map
 
 | Path | What |

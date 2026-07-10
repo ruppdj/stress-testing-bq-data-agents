@@ -150,10 +150,66 @@ staring at them from the result set — and silently miss hazards that leave
 nothing to see.** The fix on v2 was boring: a 36-row name crosswalk mapping
 the trade table's spellings to the player tables' (justified independently —
 36 silently unjoinable names is a data bug regardless of any eval). With it,
-v2 answered Dončić correctly; a same-day re-run of all nine traps confirmed
-the data fix didn't perturb trap behavior. Curation that makes a hazard
-impossible beats hoping the agent stays vigilant, because vigilance only
-triggers on what's visible.
+v2 answered Dončić correctly — though, notably, not by performing the
+repaired join: it used the curated table's pre-aggregated traded-player row
+and never touched the name match. That nuance bothered me enough to become
+its own experiment (next section). A same-day re-run of all nine traps
+confirmed the data fix didn't perturb trap behavior. Curation that makes a
+hazard impossible beats hoping the agent stays vigilant, because vigilance
+only triggers on what's visible.
+
+## Removing the shortcut: an ablation on the curated agent
+
+v2's clean sweep left one claim untested. Its pass on the traded-player
+ranking went through the curated season-totals table — the pre-aggregated
+row made the dangerous join unnecessary. So which was doing the work: the
+curation, or the agent's own care?
+
+To answer that, I built a fourth arm: identical to v2 — same instructions,
+same 26 verified queries, same clean data — except the season-totals table
+loses its traded-player rows and the flag that marks them (2,191 rows,
+removed in a view). Every reference to those rows was scrubbed from the
+agent's instructions, glossary, and table descriptions, under one rule:
+remove the claims the ablation makes false, add no warnings. The hazard had
+to stay discoverable, not documented. Before any run, I pre-registered from
+BigQuery exactly what each wrong path would produce.
+
+| Probe | Correct answer | Pre-registered silent decoy | Result |
+|---|---|---|---|
+| Harden assists lookup | 10.8 via splits | none — this gap surfaces as an *empty result* | **PASS** (investigated, recovered) |
+| Top scorer among traded players | Dončić 28.2 | Ingram 22.2 — every mid-season player silently drops from the join | **FAIL — decoy hit exactly** |
+| Top-5 rebounders | Drummond #3, 863 | same-shape list, Drummond gone, Sabonis #5 | **FAIL — decoy hit exactly** |
+| Count of 20+ PPG scorers | 43 | 40 | **FAIL — decoy hit exactly** |
+
+Five for five against the pre-registration, and the nine traps stayed clean
+— the scrub moved nothing else. Where the missing data produced an empty
+result, the agent noticed instantly ("Wait — 0 rows for James Harden?"),
+investigated, and hand-built the correct weighted answer. Where the missing
+data produced a plausible-looking result, it never looked twice. These are
+the same probes the uncurated agents aced a few days earlier — when the
+hazard was *visible duplicate rows*. The ablation converted the same hazard
+into *silently missing rows*, and the results flipped with it.
+
+The count question produced the exhibit I'd show anyone who designs
+agent-facing schemas. The agent asked itself exactly the right question —
+could traded players be split across rows? — and then talked itself out of
+it: *"the key phrase here is 'player season totals'… this strongly suggests
+that even if a player was traded, their season total would be recorded
+once."* It trusted the implied contract of the table's name. Reasonably so
+— that is precisely the contract the real v2 keeps and the ablation
+deliberately broke. Schema names and descriptions aren't labels; they're
+instructions the model builds on.
+
+And the ranking question sharpened the earlier finding: the uncurated
+agents' name-join failures were never really about join skill. Given a
+totals-shaped table, the ablated agent didn't even attempt the trade-table
+join — its reasoning explicitly considered the splits table and rejected
+it. Meanwhile, a same-day control run on the real v2 finally exercised the
+join the original run had skipped: it joined the trade table to player
+stats by name — the exact query shape that produced Anthony Davis on the
+other two arms — and got Dončić, because the crosswalk had made the names
+match. The fix holds at query time; the vigilance it replaces was never
+there to begin with.
 
 ## The verified-query short circuit
 
@@ -272,6 +328,9 @@ complete looks like, no.
 - The drift's cause is unknown — no pinning means a platform change is
   indistinguishable from my own configuration growth. One grading anomaly,
   consistent with the response fragmentation, is disclosed in the logs.
+- The ablation arm's four probe results are single rollouts each (its traps:
+  one nine-trap run). That arm exists to test a mechanism, not to estimate a
+  rate; it sits outside the headline tables by design.
 - Grading is mine, against ground truth verified in BigQuery before any run.
   All graded logs, reasoning streams, and raw API responses are in this repo.
 
@@ -281,7 +340,9 @@ complete looks like, no.
 2. Some failures live in the data model. Fix them in dbt, not the prompt —
    one grain per table, engineered join keys everywhere.
 3. Agents fix hazards they can see and miss hazards that leave no trace.
-   Make hazards impossible; don't rely on vigilance.
+   Make hazards impossible; don't rely on vigilance. And treat schema names
+   and descriptions as promises — the model builds on the contract they
+   imply, so a table that breaks its own name's contract fails silently.
 4. Verified queries standardize answers and hide assumptions. Know which one
    you're getting.
 5. Trust failures are unpredictable in timing and persistence. Eval them
