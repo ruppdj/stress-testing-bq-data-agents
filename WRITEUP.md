@@ -339,10 +339,15 @@ on easy-looking questions and read exactly like its correct answers. If
 nobody on staff can review the logic, nobody catches the week the leak
 fires.
 
-What *seems* to work today: a well-defined report menu on a curated,
+What *seems* to work today — and one small experiment's worth of "seems"
+is all this is — is narrow: a well-defined report menu on a curated,
 single-grain mart — the agent as an augmented report writer, where questions
 stay close to verified territory and consistency is the point. That's a
-real, useful thing for a small org. It's just not open-ended Q&A.
+real, useful thing for a small org. But name it precisely: reporting, not
+analytics, and not an analyst. This configuration worked safely for one
+reason — deep domain knowledge and rigid structure removed everything that
+could go wrong before the agent saw a question. Whether it generalizes past
+that is exactly the further study this experiment doesn't cover.
 
 And the preparation isn't wasted either way. These agents don't eliminate
 data engineering; they move it — from writing each query to designing data
@@ -351,6 +356,12 @@ the same ones as ever: domain expertise and deep understanding of your own
 data. The audit, the cleanup, the single-grain
 marts, the join keys — that work pays off now in agent reliability, and
 keeps paying off when the agents get good enough to trust more.
+
+None of this replaces an analytics team, either. If you have one, or can
+afford one, they remain very much an asset — these agents are a tool
+experts wield, not a substitute for them. And the expert work isn't
+one-time setup: on an unpinned platform where failures appear without
+warning, the re-checking never ends.
 
 One more finding worth stating plainly: AI built this project with me in a
 few days — a solid two weeks of work at pre-AI pace. But time was the only
@@ -397,9 +408,12 @@ complete looks like, no.
    plain randomness in the model, not the platform changing underneath you:
    the one change we caught was formatting, never content. Eval repeatedly,
    on a schedule, forever; a passing run certifies nothing beyond itself.
-6. Not ready for non-technical supervision. What it seems ready for: a fast,
-   consistent report writer behind a defined menu — and the data work you do
-   to get that is the same work that matters when they improve.
+6. Not ready for live use without deliberate structure and an expert behind
+   it. What one experiment suggests it's ready for: a fast, consistent
+   report writer behind a defined menu, on data an expert curated — which is
+   reporting, not analytics, and not an analyst. If you have an analytics
+   team, this is a tool for them, not a replacement — and the data work is
+   the same work that matters when the agents improve.
 
 ---
 
